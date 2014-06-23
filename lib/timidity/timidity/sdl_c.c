@@ -92,7 +92,7 @@ static void ctl_event(CtlEvent *e)
  */
 ControlMode *interface_d_loader(void)
 {
-    return &ctl;
+    return ctl;
 }
 
 

@@ -512,6 +512,8 @@ extern int SecondMode;
 
 extern struct URL_module URL_module_file;
 
+extern void free_midi_file_data();
+
 MAIN_INTERFACE struct URL_module *url_module_list[] =
 {
     &URL_module_file,
@@ -5423,7 +5425,7 @@ int Timidity_Init(int rate, int bits_per_sample, int channels, const char * soun
 		{
 			close( fd );
 
-			add_soundfont( soundfont_file, 0, -1, -1, -1 );
+			add_soundfont( (char*)soundfont_file, 0, -1, -1, -1 );
 			
 			// most soundfounts I've seen are too quiet; change the amplification
 			amplification = 200;

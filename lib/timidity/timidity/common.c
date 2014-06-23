@@ -590,6 +590,8 @@ void *safe_malloc(size_t count)
 #endif /* ABORT_AT_FATAL */
     safe_exit(10);
     /*NOTREACHED*/
+
+    return NULL;
 }
 
 void *safe_large_malloc(size_t count)
@@ -616,6 +618,8 @@ void *safe_large_malloc(size_t count)
 #endif /* ABORT_AT_FATAL */
     safe_exit(10);
     /*NOTREACHED*/
+
+    return NULL;
 }
 
 void *safe_realloc(void *ptr, size_t count)
@@ -652,6 +656,8 @@ void *safe_realloc(void *ptr, size_t count)
 #endif /* ABORT_AT_FATAL */
     safe_exit(10);
     /*NOTREACHED*/
+
+    return NULL;
 }
 
 /* This'll allocate memory or die. */
@@ -676,6 +682,8 @@ char *safe_strdup(const char *s)
 #endif /* ABORT_AT_FATAL */
     safe_exit(10);
     /*NOTREACHED*/
+
+    return NULL;
 }
 
 /* free ((void **)ptr_list)[0..count-1] and ptr_list itself */

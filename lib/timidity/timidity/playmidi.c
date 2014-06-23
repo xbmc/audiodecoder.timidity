@@ -4187,7 +4187,7 @@ static void process_sysex_event(int ev, int ch, int val, int b)
 			break;
 		case 0x20:	/* Delay Send Level to Reverb */
 			ctl->cmsg(CMSG_INFO,VERB_NOISY,"Delay Send Level to Reverb (%d)",val);
-			if (delay_status_gs.send_reverb = val) {
+			if ((delay_status_gs.send_reverb = val)) {
 				delay_status_gs.send_reverb = val;
 				recompute_delay_status_gs();
 				init_ch_delay();
@@ -8008,7 +8008,7 @@ int play_event(MidiEvent *ev)
 		channel[ch].temper_type = current_event->a;
 		ctl_mode_event(CTLE_TEMPER_TYPE, 1, ch, channel[ch].temper_type);
 		if (temper_type_mute) {
-			if (temper_type_mute & 1 << current_event->a
+			if ((temper_type_mute & 1 << current_event->a)
 					- ((current_event->a >= 0x40) ? 0x3c : 0)) {
 				SET_CHANNELMASK(channel_mute, ch);
 				ctl_mode_event(CTLE_MUTE, 1, ch, 1);
@@ -8031,7 +8031,7 @@ int play_event(MidiEvent *ev)
 			ctl_mode_event(CTLE_TEMPER_TYPE, 1, i, channel[i].temper_type);
 		}
 		if (temper_type_mute) {
-			if (temper_type_mute & 1 << current_event->a
+			if ((temper_type_mute & 1 << current_event->a)
 					- ((current_event->a >= 0x40) ? 0x3c : 0)) {
 				FILL_CHANNELMASK(channel_mute);
 				for (i = 0; i < MAX_CHANNELS; i++)

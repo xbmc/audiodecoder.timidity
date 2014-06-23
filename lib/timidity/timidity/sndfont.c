@@ -55,6 +55,7 @@
 #include "output.h"
 #include "filter.h"
 #include "resample.h"
+#include "freq.h"
 
 #define FILENAME_NORMALIZE(fname) url_expand_home_dir(fname)
 #define FILENAME_REDUCED(fname)   url_unexpand_home_dir(fname)
@@ -1630,8 +1631,6 @@ static void convert_vibrato(SampleList *vp, LayerTable *tbl)
       CFG_FOR_SF
 
  *********************************************************************/
-
-#include "freq.h"
 
 #define CFG_FOR_SF_SUPPORT_FFT	1
 
