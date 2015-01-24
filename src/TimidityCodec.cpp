@@ -160,7 +160,10 @@ void* Init(const char* strFile, unsigned int filecache, int* channels,
   *bitspersample = 16;
   *totaltime = Timidity_GetLength(result->song);
   *format = AE_FMT_S16NE;
-  *channelinfo = NULL;
+   static enum AEChannel map[3] = {
+    AE_CH_FL, AE_CH_FR, AE_CH_NULL
+  };
+  *channelinfo = map;
   *bitrate = 0;
 
   return result;
