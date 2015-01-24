@@ -44,9 +44,9 @@
 /* #define CONFIG_FILE "/etc/timidity.cfg" */
 #ifndef CONFIG_FILE
 #  ifdef DEFAULT_PATH
-#    define CONFIG_FILE DEFAULT_PATH "/timidity.cfg"
+//#    define CONFIG_FILE DEFAULT_PATH "/timidity.cfg"
 #  else
-#    define CONFIG_FILE PKGDATADIR "/timidity.cfg"
+//#    define CONFIG_FILE PKGDATADIR "/timidity.cfg"
 #  endif /* DEFAULT_PATH */
 #endif /* CONFIG_FILE */
 

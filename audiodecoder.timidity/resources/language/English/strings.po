@@ -13,5 +13,5 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
 msgctxt "#30000"
-msgid "Soundfont"
+msgid "Soundfont or config file"
 msgstr ""

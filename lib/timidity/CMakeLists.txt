@@ -38,8 +38,7 @@ set(SOURCES timidity/aq.c
             utils/strtab.c
             utils/fft4g.c
             utils/timer.c
-            utils/getopt.c
-            timidity_codec.c)
+            utils/getopt.c)
  
 add_options(C ALL_BUILDS "-fPIC")
 

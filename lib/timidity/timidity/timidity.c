@@ -18,11 +18,6 @@
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
 
-#if !defined (TEST_DLL_INTERFACE)
-	#define DEFAULT_PATH	"special://xbmc/system/players/paplayer/timidity/"
-	#define CONFIG_FILE		"special://xbmc/system/players/paplayer/timidity/timidity.cfg"
-#endif
-
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif /* HAVE_CONFIG_H */
@@ -111,8 +106,6 @@
 #ifndef __GNUC__
 #define __attribute__(x) /* ignore */
 #endif
-
-#define PKGDATADIR DEFAULT_PATH
 
 //#define TEST_DLL_INTERFACE
 //#define ENABLE_MAIN
@@ -364,8 +357,8 @@ static const struct option longopts[] = {
 #endif /* main */
 
 MAIN_INTERFACE void timidity_start_initialize(void);
-MAIN_INTERFACE int timidity_pre_load_configuration(void);
-MAIN_INTERFACE int timidity_post_load_configuration(void);
+MAIN_INTERFACE int timidity_pre_load_configuration(const char* cfgfile);
+MAIN_INTERFACE int timidity_post_load_configuration(const char* cfgfile);
 MAIN_INTERFACE void timidity_init_player(void);
 MAIN_INTERFACE int timidity_play_main(int nfiles, char **files);
 MAIN_INTERFACE int got_a_configuration;
@@ -1167,7 +1160,7 @@ static char *expand_variables(char *string, MBlockList *varbuf, const char *base
     reuse_mblock(&varbuf); \
     close_file(tf); return 1; }
 
-MAIN_INTERFACE int read_config_file(char *name, int self)
+MAIN_INTERFACE int read_config_file(const char *name, int self)
 {
     struct timidity_file *tf;
     char buf[1024], *tmp, *w[MAXWORDS + 1], *cp;
@@ -5013,16 +5006,16 @@ MAIN_INTERFACE void timidity_start_initialize(void)
     is_first = 0;
 }
 
-MAIN_INTERFACE int timidity_pre_load_configuration(void)
+MAIN_INTERFACE int timidity_pre_load_configuration(const char* cfgfile)
 {
     /* UNIX */
-    if(!read_config_file(CONFIG_FILE, 0))
+    if(!read_config_file(cfgfile, 0))
 		got_a_configuration = 1;
 
     return 0;
 }
 
-MAIN_INTERFACE int timidity_post_load_configuration(void)
+MAIN_INTERFACE int timidity_post_load_configuration(const char* cfgfile)
 {
     int i, cmderr = 0;
 
@@ -5078,7 +5071,7 @@ MAIN_INTERFACE int timidity_post_load_configuration(void)
 
     if(!got_a_configuration)
     {
-	if(try_config_again && !read_config_file(CONFIG_FILE, 0))
+	if(try_config_again && !read_config_file(cfgfile, 0))
 	    got_a_configuration = 1;
     }
 
@@ -5412,7 +5405,7 @@ int main(int argc, char **argv)
 extern PlayMode buffer_play_mode; // defined in buffer_a.c
 
 
-int Timidity_Init(int rate, int bits_per_sample, int channels, const char * soundfont_file )
+int Timidity_Init(int rate, int bits_per_sample, int channels, const char * soundfont_file, const char* cfgfile )
 {
     int c, err, i;
 
@@ -5442,10 +5435,10 @@ int Timidity_Init(int rate, int bits_per_sample, int channels, const char * soun
 
 	if( !got_a_configuration )
 	{
-    	if((err = timidity_pre_load_configuration()) != 0)
+	if((err = timidity_pre_load_configuration(cfgfile)) != 0)
 			return err;
 
-    	err += timidity_post_load_configuration();
+	err += timidity_post_load_configuration(cfgfile);
 	}
 
     // If there were problems, give up now
@@ -5454,8 +5447,8 @@ int Timidity_Init(int rate, int bits_per_sample, int channels, const char * soun
 		if(!got_a_configuration)
 		{
 	    	ctl->cmsg(CMSG_FATAL, VERB_NORMAL,
-		    	  "%s: Can't read any configuration file.\nPlease check "
-		      	CONFIG_FILE, program_name);
+		    	  "%s: Can't read any configuration file.\nPlease check %s",
+		      	cfgfile, program_name);
 		}
 		
 		return err;

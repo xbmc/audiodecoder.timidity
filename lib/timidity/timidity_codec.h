@@ -21,7 +21,7 @@
 
 typedef struct _MidiSong MidiSong;
 
-int Timidity_Init(int rate, int bits_per_sample, int channels, const char * soundfont_file ); // soundfont_file may be 0
+int Timidity_Init(int rate, int bits_per_sample, int channels, const char * soundfont_file, const char* cfgfile ); // soundfont_file may be 0
 void Timidity_Cleanup();
 int Timidity_GetLength( MidiSong *song );
 MidiSong *Timidity_LoadSong(char *fn);
