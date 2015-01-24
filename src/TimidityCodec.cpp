@@ -129,6 +129,9 @@ void* Init(const char* strFile, unsigned int filecache, int* channels,
            int* samplerate, int* bitspersample, int64_t* totaltime,
            int* bitrate, AEDataFormat* format, const AEChannel** channelinfo)
 {
+  if (!soundfont || strlen(soundfont) == 0)
+    return NULL;
+
   if (strstr(soundfont,".sf2"))
     Timidity_Init(48000, 16, 2, soundfont, NULL); // real soundfont
   else
