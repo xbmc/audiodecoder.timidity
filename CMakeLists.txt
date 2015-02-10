@@ -18,3 +18,5 @@ set(TIMIDITY_SOURCES src/TimidityCodec.cpp)
 set(DEPLIBS timidity)
 
 build_addon(audiodecoder.timidity TIMIDITY DEPLIBS)
+
+include(CPack)
