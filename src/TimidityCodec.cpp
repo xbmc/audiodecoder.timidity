@@ -27,6 +27,8 @@ extern "C" {
 #include "kodi/kodi_audiodec_dll.h"
 #include "kodi/AEChannelData.h"
 
+#include <unistd.h>
+
 char soundfont[1024] = {0};
 
 //-- Create -------------------------------------------------------------------
@@ -125,17 +127,27 @@ struct TimidityContext
   size_t pos;
 };
 
+#define SET_IF(ptr, value) \
+{ \
+  if ((ptr)) \
+   *(ptr) = (value); \
+}
+
 void* Init(const char* strFile, unsigned int filecache, int* channels,
            int* samplerate, int* bitspersample, int64_t* totaltime,
            int* bitrate, AEDataFormat* format, const AEChannel** channelinfo)
 {
-  if (!soundfont || strlen(soundfont) == 0)
+  if (strlen(soundfont) == 0)
     return NULL;
 
+  int res;
   if (strstr(soundfont,".sf2"))
-    Timidity_Init(48000, 16, 2, soundfont, NULL); // real soundfont
+    res = Timidity_Init(48000, 16, 2, soundfont, NULL); // real soundfont
   else
-    Timidity_Init(48000, 16, 2, NULL, soundfont); // config file
+    res = Timidity_Init(48000, 16, 2, NULL, soundfont); // config file
+
+  if (res != 0)
+    return NULL;
 
   void* file = XBMC->OpenFile(strFile, 0);
   if (!file)
@@ -143,41 +155,57 @@ void* Init(const char* strFile, unsigned int filecache, int* channels,
 
   int len = XBMC->GetFileLength(file);
   uint8_t* data = new uint8_t[len];
+  if (!data)
+  {
+    XBMC->CloseFile(file);
+    return NULL;
+  }
   XBMC->ReadFile(file, data, len);
   XBMC->CloseFile(file);
 
   const char* tempfile = tmpnam(NULL);
 
   FILE* f = fopen(tempfile,"wb");
+  if (!f)
+  {
+    delete[] data;
+    return NULL;
+  }
   fwrite(data, 1, len, f);
   fclose(f);
+  delete[] data;
 
   TimidityContext* result = new TimidityContext;
+  if (!result)
+    return NULL;
+
   result->song = Timidity_LoadSong((char*)tempfile);
+  unlink(tempfile);
   if (!result->song)
   {
     delete result;
     return NULL;
   }
+
   result->pos = 0;
 
-  *channels = 2;
-  *samplerate = 48000;
-  *bitspersample = 16;
-  *totaltime = Timidity_GetLength(result->song);
-  *format = AE_FMT_S16NE;
+  SET_IF(channels, 2)
+  SET_IF(samplerate, 48000)
+  SET_IF(bitspersample, 16)
+  SET_IF(totaltime, Timidity_GetLength(result->song))
+  SET_IF(format, AE_FMT_S16NE)
    static enum AEChannel map[3] = {
     AE_CH_FL, AE_CH_FR, AE_CH_NULL
   };
-  *channelinfo = map;
-  *bitrate = 0;
+  SET_IF(channelinfo, map)
+  SET_IF(bitrate, 0)
 
   return result;
 }
 
 int ReadPCM(void* context, uint8_t* pBuffer, int size, int *actualsize)
 {
-  if (!context)
+  if (!context || !pBuffer || !actualsize)
     return 1;
 
   TimidityContext* ctx = (TimidityContext*)context;
@@ -203,6 +231,9 @@ int64_t Seek(void* context, int64_t time)
 
 bool DeInit(void* context)
 {
+  if (!context)
+    return true;
+
   TimidityContext* ctx = (TimidityContext*)context;
 
   Timidity_FreeSong(ctx->song);
