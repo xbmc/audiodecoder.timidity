@@ -11,7 +11,11 @@
     point="kodi.audiodecoder"
     name="mid"
     extension=".mid|.kar"
-    library_linux="audiodecoder.timidity.so"/>
+    library_linux="audiodecoder.timidity.so"
+    library_freebsd="audiodecoder.timidity.so"
+    library_osx="audiodecoder.timidity.dylib"
+    library_windx="audiodecoder.timidity.dll"
+    library_android="libaudiodecoder.timidity.so"/>
   <extension point="xbmc.addon.metadata">
     <summary lang="en">Timidity Audio Decoder</summary>
     <description lang="en">Timidity MIDI Audio Decoder</description>
