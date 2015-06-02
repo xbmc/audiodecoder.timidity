@@ -18,14 +18,14 @@
  *
  */
 
-#include "kodi/libXBMC_addon.h"
+#include "libXBMC_addon.h"
 
 ADDON::CHelper_libXBMC_addon *XBMC           = NULL;
 
 extern "C" {
 #include "timidity_codec.h"
-#include "kodi/kodi_audiodec_dll.h"
-#include "kodi/AEChannelData.h"
+#include "kodi_audiodec_dll.h"
+#include "AEChannelData.h"
 
 #include <unistd.h>
 
