@@ -62,7 +62,7 @@
 #endif
 #define _double2fixmagic 68719476736.0 * 1.5
 
-#if defined(__GNUC__) && defined(__i386__)
+#if defined(__GNUC__) && (defined(__i386__)||defined (__amd64__)||defined(__ia64__) )
 static inline int32 imuldiv8(int32 a, int32 b)
 {
     int32 result;
