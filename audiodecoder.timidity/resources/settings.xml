@@ -1,3 +1,16 @@
-<settings>
-  <setting id="soundfont" label="30000" type="file" mask=".sf2|.cfg"/>
+<settings version="1">
+  <section id="addon" label="-1" help="-1">
+    <category id="main" label="128" help="-1">
+      <group id="1" label="-1">
+        <setting id="soundfont" type="path" label="30000" help="-1">
+          <default></default>
+          <constraints>
+            <allowempty>true</allowempty>
+            <masking>.sf2|.cfg</masking>
+          </constraints>
+          <control type="button" format="file"/>
+        </setting>
+      </group>
+    </category>
+  </section>
 </settings>
