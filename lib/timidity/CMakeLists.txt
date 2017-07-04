@@ -50,4 +50,4 @@ endif(APPLE)
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR} timidity libarc utils)
 
-add_library(timidity STATIC ${SOURCES})
+add_library(timidity ${SOURCES})
