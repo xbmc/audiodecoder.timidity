@@ -42,11 +42,14 @@ set(SOURCES timidity/aq.c
  
 add_options(C ALL_BUILDS "-fPIC")
 
-add_definitions(-DHAVE_GETTIMEOFDAY=1 -DHAVE_ALSA_ASOUNDLIB=1 -DHAVE_LIBASOUND=1 -DHAVE_SYS_TIME_H=1 -DHAVE_ERRNO_H=1)
+add_definitions(-DHAVE_GETTIMEOFDAY=1 -DHAVE_ALSA_ASOUNDLIB=1 -DHAVE_LIBASOUND=1 -DHAVE_ERRNO_H=1)
 
 if(APPLE)
   add_definitions(-DHAVE_STRLCPY=1 -DHAVE_STRLCAT=1)
 endif(APPLE)
+if(NOT WIN32)
+  add_definitions(-DHAVE_SYS_TIME_H=1)
+endif()
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR} timidity libarc utils)
 

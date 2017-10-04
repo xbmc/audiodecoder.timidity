@@ -71,7 +71,7 @@ static int output_data(char *buf, int32 bytes)
 	unsigned int freespace = output_song->output_size - output_song->output_offset;
 	unsigned int copylength = freespace > bytes ? bytes : freespace;
 
-	memcpy( output_song->output_buffer + output_song->output_offset, buf, copylength );
+	memcpy( (char*)(output_song->output_buffer) + output_song->output_offset, buf, copylength );
 	output_song->output_offset += copylength;
 
 	// If we didn't copy everything, allocate a special buffer, and store it there
@@ -87,7 +87,7 @@ static int output_data(char *buf, int32 bytes)
 				return -1; // just stop adding
 
 			output_song->stored_buffer = newbuf;
-			memcpy( output_song->stored_buffer + output_song->stored_size, buf + copylength, stored_size );
+			memcpy( (char*(output_song->stored_buffer) + output_song->stored_size, buf + copylength, stored_size );
 			output_song->stored_size = output_song->stored_size + stored_size;
 		}
 		else
