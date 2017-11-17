@@ -73,6 +73,8 @@ extern VOLATILE int intr;
 #ifdef SOLARIS
 /* shut gcc warning up */
 int usleep(unsigned int useconds);
+#elif defined(_WIN32)
+#define usleep(X) Sleep((X) / 1000U)
 #endif
 
 #ifdef SUPPORT_SOUNDSPEC
@@ -9154,7 +9156,7 @@ int Timidity_FillBuffer( MidiSong* song, void *buf, unsigned int size )
 		// In case there is still data in the stored_buffer, move it and return.
 		if ( song->stored_size > 0 )
 		{
-			memmove( song->stored_buffer, song->stored_buffer + copylength, song->stored_size );
+			memmove( song->stored_buffer, (char*)song->stored_buffer + copylength, song->stored_size );
 			song->output_offset = copylength;
 			
 			// and the while() loop will throw us away

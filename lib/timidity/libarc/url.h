@@ -35,7 +35,7 @@
 /* Define if you want to appended on a user's home directory if a filename
  * is beginning with '~'
  */
-#if !defined(__MACOS__) && !defined(__W32__)
+#if !defined(__MACOS__) && !defined(__W32__) && !defined(_WIN32)
 #define TILD_SCHEME_ENABLE
 #endif
 
