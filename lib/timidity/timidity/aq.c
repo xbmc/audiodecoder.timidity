@@ -52,6 +52,10 @@
 #define MAX_BUCKET_TIME 0.2
 #define MAX_FILLED_TIME 2.0
 
+#if defined(_WIN32)
+#define usleep(X) Sleep((X) / 1000U)
+#endif
+
 static int32 device_qsize;
 static int Bps;	/* Bytes per sample frame */
 static int bucket_size;
