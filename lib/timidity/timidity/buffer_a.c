@@ -87,7 +87,7 @@ static int output_data(char *buf, int32 bytes)
 				return -1; // just stop adding
 
 			output_song->stored_buffer = newbuf;
-			memcpy( (char*(output_song->stored_buffer) + output_song->stored_size, buf + copylength, stored_size );
+			memcpy( (char*)(output_song->stored_buffer) + output_song->stored_size, buf + copylength, stored_size );
 			output_song->stored_size = output_song->stored_size + stored_size;
 		}
 		else
