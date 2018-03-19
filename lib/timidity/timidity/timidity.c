@@ -1173,7 +1173,7 @@ MAIN_INTERFACE int read_config_file(const char *name, int self)
     int dr = 0, bankno = 0, mapid = INST_NO_MAP, origbankno = 0x7FFFFFFF;
     int extension_flag, param_parse_err;
     MBlockList varbuf;
-    char *basedir, *sep;
+    char *basedir = NULL, *sep;
 
     if(rcf_count > 50)
     {

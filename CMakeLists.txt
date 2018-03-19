@@ -23,6 +23,10 @@ set(DEPLIBS timidity
 add_definitions(-DLIBRARY_PREFIX="${CMAKE_SHARED_LIBRARY_PREFIX}"
                 -DLIBRARY_SUFFIX="${CMAKE_SHARED_LIBRARY_SUFFIX}")
 
+if(WIN32)
+  add_definitions(-D_CRT_NONSTDC_NO_DEPRECATE)
+endif()
+
 build_addon(audiodecoder.timidity TIMIDITY DEPLIBS)
 
 include(CPack)

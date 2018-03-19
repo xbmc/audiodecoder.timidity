@@ -49,6 +49,8 @@ if(APPLE)
 endif(APPLE)
 if(NOT WIN32)
   add_definitions(-DHAVE_SYS_TIME_H=1 -DHAVE_GETTIMEOFDAY=1)
+else()
+  add_definitions(-D_CRT_NONSTDC_NO_DEPRECATE)
 endif()
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR} timidity libarc utils)

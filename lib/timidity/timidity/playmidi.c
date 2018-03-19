@@ -6721,7 +6721,7 @@ static void do_compute_data_midi(int32 count)
 
 	for (i = 0; i < uv; i++) {
 		if (voice[i].status != VOICE_FREE) {
-			int32 *vpb;
+			int32 *vpb = NULL;
 			int8 flag;
 			
 			if (channel_effect) {
