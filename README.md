@@ -5,6 +5,10 @@ This is a [Kodi](http://kodi.tv) audio decoder addon for midi files.
 [![Build Status](https://travis-ci.org/xbmc/audiodecoder.timidity.svg?branch=master)](https://travis-ci.org/xbmc/audiodecoder.timidity)
 [![Build Status](https://ci.appveyor.com/api/projects/status/github/xbmc/audiodecoder.timidity?svg=true)](https://ci.appveyor.com/project/xbmc/audiodecoder-timidity)
 
+## Requirements
+
+In order to use this addon you have to set a [SoundFont]("https://en.wikipedia.org/wiki/SoundFont") file in Kodi's addon settings.
+
 ## Build instructions
 
 When building the addon you have to use the correct branch depending on which version of Kodi you're building against. 
