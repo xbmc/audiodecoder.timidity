@@ -40,7 +40,7 @@
 #include <strings.h>
 #endif
 #include <math.h>
-#ifdef __W32__
+#ifdef WIN32
 #include <windows.h>
 #endif
 #ifdef HAVE_UNISTD_H
@@ -8957,7 +8957,7 @@ static int32 get_rx_drum(struct DrumParts *p, int32 rx)
 static FILE * fp_wav_out;
 #endif
 
-MidiSong *Timidity_LoadSong(char *fn)
+MidiSong EXPORT *Timidity_LoadSong(char *fn)
 {
 	int i, j, rc;
 
@@ -9086,7 +9086,7 @@ MidiSong *Timidity_LoadSong(char *fn)
 }
 
 
-void Timidity_FreeSong(MidiSong *song)
+void EXPORT Timidity_FreeSong(MidiSong *song)
 {
 	// Disconnect the buffer
 	outbuf_set_data( 0 );
@@ -9134,7 +9134,7 @@ void Timidity_FreeSong(MidiSong *song)
 }
 
 
-int Timidity_FillBuffer( MidiSong* song, void *buf, unsigned int size )
+int EXPORT Timidity_FillBuffer( MidiSong* song, void *buf, unsigned int size )
 {
 	if ( song->end_of_song_reached )
 		return 0;
@@ -9202,7 +9202,7 @@ int Timidity_FillBuffer( MidiSong* song, void *buf, unsigned int size )
 }
 
 
-unsigned long Timidity_Seek( MidiSong *song, unsigned long iTimePos )
+unsigned long EXPORT Timidity_Seek( MidiSong *song, unsigned long iTimePos )
 {
 	skip_to( iTimePos/1000*48000);
 	return iTimePos;

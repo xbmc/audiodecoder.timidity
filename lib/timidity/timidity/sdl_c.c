@@ -96,7 +96,7 @@ ControlMode *interface_d_loader(void)
 }
 
 
-char *Timidity_ErrorMsg()
+const EXPORT char* Timidity_ErrorMsg()
 {
 	return buffer_timidity_error;
 }
