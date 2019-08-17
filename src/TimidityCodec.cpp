@@ -33,7 +33,7 @@ extern "C" {
 #include "timidity_codec.h"
 }
 
-class CMyAddon : public kodi::addon::CAddonBase
+class ATTRIBUTE_HIDDEN CMyAddon : public kodi::addon::CAddonBase
 {
 public:
   CMyAddon() : m_usedAmount(0) {}
@@ -51,8 +51,8 @@ private:
 
 /*****************************************************************************************************/
 
-class CTimidityCodec : public kodi::addon::CInstanceAudioDecoder,
-                       private CDllHelper
+class ATTRIBUTE_HIDDEN CTimidityCodec : public kodi::addon::CInstanceAudioDecoder,
+                                        private CDllHelper
 {
 public:
   CTimidityCodec(KODI_HANDLE instance, CMyAddon* addon, bool useChild);
