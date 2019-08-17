@@ -14,11 +14,12 @@ add_subdirectory(lib/timidity)
 
 set(TIMIDITY_SOURCES src/TimidityCodec.cpp)
 
-set(DEPLIBS timidity
-            ${p8-platform_LIBRARIES})
+set(DEPLIBS ${p8-platform_LIBRARIES})
 
 add_definitions(-DLIBRARY_PREFIX="${CMAKE_SHARED_LIBRARY_PREFIX}"
                 -DLIBRARY_SUFFIX="${CMAKE_SHARED_LIBRARY_SUFFIX}")
+
+set(TIMIDITY_ADDITIONAL_BINARY $<TARGET_FILE:timidity>)
 
 if(WIN32)
   add_definitions(-D_CRT_NONSTDC_NO_DEPRECATE)

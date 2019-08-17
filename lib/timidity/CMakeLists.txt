@@ -53,5 +53,5 @@ endif()
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR} timidity libarc utils)
 
-add_library(timidity STATIC ${SOURCES})
+add_library(timidity SHARED ${SOURCES})
 set_property(TARGET timidity PROPERTY POSITION_INDEPENDENT_CODE ON)
