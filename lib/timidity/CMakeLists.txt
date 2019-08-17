@@ -40,8 +40,6 @@ set(SOURCES timidity/aq.c
             utils/timer.c
             utils/getopt.c)
  
-add_options(C ALL_BUILDS "-fPIC")
-
 add_definitions(-DHAVE_ALSA_ASOUNDLIB=1 -DHAVE_LIBASOUND=1 -DHAVE_ERRNO_H=1)
 
 if(APPLE)
@@ -56,3 +54,4 @@ endif()
 include_directories(${CMAKE_CURRENT_SOURCE_DIR} timidity libarc utils)
 
 add_library(timidity STATIC ${SOURCES})
+set_property(TARGET timidity PROPERTY POSITION_INDEPENDENT_CODE ON)
