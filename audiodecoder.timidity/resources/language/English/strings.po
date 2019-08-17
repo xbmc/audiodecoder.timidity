@@ -15,3 +15,11 @@ msgstr ""
 msgctxt "#30000"
 msgid "Soundfont or config file"
 msgstr ""
+
+msgctxt "#30001"
+msgid "Timidity Audio Decode"
+msgstr ""
+
+msgctxt "#30002"
+msgid "Soundfont not set in settings!"
+msgstr ""

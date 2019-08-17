@@ -134,7 +134,10 @@ bool CTimidityCodec::Init(const std::string& filename, unsigned int filecache,
                      std::vector<AEChannel>& channellist)
 {
   if (m_soundfont.empty())
+  {
+    kodi::QueueNotification(QUEUE_ERROR, kodi::GetLocalizedString(30001), kodi::GetLocalizedString(30002));
     return false;
+  }
 
   if (!LoadDll(m_usedLibName)) return false;
   if (!REGISTER_DLL_SYMBOL(Timidity_Init)) return false;
