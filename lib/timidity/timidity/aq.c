@@ -53,6 +53,7 @@
 #define MAX_FILLED_TIME 2.0
 
 #if defined(_WIN32)
+#include <windows.h>
 #define usleep(X) Sleep((X) / 1000U)
 #endif
 

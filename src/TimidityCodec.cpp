@@ -33,7 +33,7 @@ extern "C" {
 #include "timidity_codec.h"
 }
 
-class CMyAddon : public kodi::addon::CAddonBase
+class ATTRIBUTE_HIDDEN CMyAddon : public kodi::addon::CAddonBase
 {
 public:
   CMyAddon() : m_usedAmount(0) {}
@@ -51,8 +51,8 @@ private:
 
 /*****************************************************************************************************/
 
-class CTimidityCodec : public kodi::addon::CInstanceAudioDecoder,
-                       private CDllHelper
+class ATTRIBUTE_HIDDEN CTimidityCodec : public kodi::addon::CInstanceAudioDecoder,
+                                        private CDllHelper
 {
 public:
   CTimidityCodec(KODI_HANDLE instance, CMyAddon* addon, bool useChild);
@@ -134,7 +134,10 @@ bool CTimidityCodec::Init(const std::string& filename, unsigned int filecache,
                      std::vector<AEChannel>& channellist)
 {
   if (m_soundfont.empty())
+  {
+    kodi::QueueNotification(QUEUE_ERROR, kodi::GetLocalizedString(30001), kodi::GetLocalizedString(30002));
     return false;
+  }
 
   if (!LoadDll(m_usedLibName)) return false;
   if (!REGISTER_DLL_SYMBOL(Timidity_Init)) return false;

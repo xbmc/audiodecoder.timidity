@@ -28,6 +28,12 @@
 #include "url.h"
 #include "mblock.h"
 
+#ifdef WIN32
+  #define EXPORT __declspec(dllexport)
+#else
+  #define EXPORT
+#endif
+
 extern char *program_name, current_filename[];
 extern const char *note_name[];
 

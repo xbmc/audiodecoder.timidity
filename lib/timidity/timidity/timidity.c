@@ -5408,7 +5408,7 @@ int main(int argc, char **argv)
 extern PlayMode buffer_play_mode; // defined in buffer_a.c
 
 
-int Timidity_Init(int rate, int bits_per_sample, int channels, const char * soundfont_file, const char* cfgfile )
+int EXPORT Timidity_Init(int rate, int bits_per_sample, int channels, const char * soundfont_file, const char* cfgfile )
 {
     int c, err, i;
 
@@ -5515,7 +5515,7 @@ int Timidity_Init(int rate, int bits_per_sample, int channels, const char * soun
 	return 0;
 }
 
-void Timidity_Cleanup()
+void EXPORT Timidity_Cleanup()
 {
 	int i;
 
@@ -5558,7 +5558,7 @@ void Timidity_Cleanup()
 	free_global();
 }
 
-int Timidity_GetLength( MidiSong *song )
+int EXPORT Timidity_GetLength( MidiSong *song )
 {
 	return song->samples / 48000 * 1000;
 }
