@@ -36,8 +36,8 @@ extern "C" {
 class ATTRIBUTE_HIDDEN CMyAddon : public kodi::addon::CAddonBase
 {
 public:
-  CMyAddon() : m_usedAmount(0) {}
-  virtual ADDON_STATUS CreateInstance(int instanceType, std::string instanceID, KODI_HANDLE instance, KODI_HANDLE& addonInstance) override;
+  CMyAddon() = default;
+  ADDON_STATUS CreateInstance(int instanceType, std::string instanceID, KODI_HANDLE instance, KODI_HANDLE& addonInstance) override;
 
   void DecreaseUsedAmount()
   {
@@ -46,7 +46,7 @@ public:
   }
 
 private:
-  int m_usedAmount;
+  int m_usedAmount = 0;
 };
 
 /*****************************************************************************************************/
@@ -56,15 +56,15 @@ class ATTRIBUTE_HIDDEN CTimidityCodec : public kodi::addon::CInstanceAudioDecode
 {
 public:
   CTimidityCodec(KODI_HANDLE instance, CMyAddon* addon, bool useChild);
-  virtual ~CTimidityCodec();
+  ~CTimidityCodec();
 
-  virtual bool Init(const std::string& filename, unsigned int filecache,
-                    int& channels, int& samplerate,
-                    int& bitspersample, int64_t& totaltime,
-                    int& bitrate, AEDataFormat& format,
-                    std::vector<AEChannel>& channellist) override;
-  virtual int ReadPCM(uint8_t* buffer, int size, int& actualsize) override;
-  virtual int64_t Seek(int64_t time) override;
+  bool Init(const std::string& filename, unsigned int filecache,
+            int& channels, int& samplerate,
+            int& bitspersample, int64_t& totaltime,
+            int& bitrate, AEDataFormat& format,
+            std::vector<AEChannel>& channellist) override;
+  int ReadPCM(uint8_t* buffer, int size, int& actualsize) override;
+  int64_t Seek(int64_t time) override;
 
 private:
   std::string m_usedLibName;
