@@ -23,14 +23,14 @@
 #include <kodi/General.h>
 #include <kodi/Filesystem.h>
 
-#include <p8-platform/util/StringUtils.h>
+#include <sstream>
 
 #if !defined(_WIN32)
 #include <unistd.h>
 #endif
 
 extern "C" {
-#include "timidity_codec.h"
+#include "timidity/timidity_codec.h"
 }
 
 class ATTRIBUTE_HIDDEN CMyAddon : public kodi::addon::CAddonBase
@@ -102,8 +102,10 @@ CTimidityCodec::CTimidityCodec(KODI_HANDLE instance, CMyAddon* addon, bool useCh
 {
   if (m_useChild)
   {
-    std::string source = kodi::GetAddonPath(StringUtils::Format("%stimidity%s", LIBRARY_PREFIX, LIBRARY_SUFFIX));
-    m_usedLibName = kodi::GetTempAddonPath(StringUtils::Format("%stimidity-%p%s", LIBRARY_PREFIX, this, LIBRARY_SUFFIX));
+    std::stringstream ss;
+    ss << static_cast<void*>(this);
+    std::string source = kodi::GetAddonPath(LIBRARY_PREFIX + std::string("timidity") + LIBRARY_SUFFIX);
+    m_usedLibName = kodi::GetTempAddonPath(LIBRARY_PREFIX + std::string("timidity-") + ss.str() + LIBRARY_SUFFIX);
     if (!kodi::vfs::CopyFile(source, m_usedLibName))
     {
       kodi::Log(ADDON_LOG_ERROR, "Failed to create libtimidity copy");
@@ -111,7 +113,7 @@ CTimidityCodec::CTimidityCodec(KODI_HANDLE instance, CMyAddon* addon, bool useCh
     }
   }
   else
-    m_usedLibName = kodi::GetAddonPath(StringUtils::Format("%stimidity%s", LIBRARY_PREFIX, LIBRARY_SUFFIX));
+    m_usedLibName = kodi::GetAddonPath(LIBRARY_PREFIX + std::string("timidity") + LIBRARY_SUFFIX);
 
   m_soundfont = kodi::GetSettingString("soundfont");
 }
