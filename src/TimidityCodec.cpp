@@ -68,6 +68,7 @@ public:
 
 private:
   std::string m_usedLibName;
+  std::string m_tmpFileName;
   CMyAddon* m_addon;
   bool m_useChild;
   std::string m_soundfont;
@@ -100,12 +101,16 @@ CTimidityCodec::CTimidityCodec(KODI_HANDLE instance, CMyAddon* addon, bool useCh
     m_useChild(useChild),
     m_song(nullptr)
 {
+  std::string source = kodi::GetAddonPath(LIBRARY_PREFIX + std::string("timidity") + LIBRARY_SUFFIX);
   if (m_useChild)
   {
     std::stringstream ss;
     ss << static_cast<void*>(this);
-    std::string source = kodi::GetAddonPath(LIBRARY_PREFIX + std::string("timidity") + LIBRARY_SUFFIX);
+#if defined(TARGET_ANDROID)
+    m_usedLibName = kodi::vfs::TranslateSpecialProtocol(std::string("special://xbmcaltbinaddons/") + LIBRARY_PREFIX + "timidity-" + ss.str() + LIBRARY_SUFFIX);
+#else
     m_usedLibName = kodi::GetTempAddonPath(LIBRARY_PREFIX + std::string("timidity-") + ss.str() + LIBRARY_SUFFIX);
+#endif
     if (!kodi::vfs::CopyFile(source, m_usedLibName))
     {
       kodi::Log(ADDON_LOG_ERROR, "Failed to create libtimidity copy");
@@ -113,7 +118,7 @@ CTimidityCodec::CTimidityCodec(KODI_HANDLE instance, CMyAddon* addon, bool useCh
     }
   }
   else
-    m_usedLibName = kodi::GetAddonPath(LIBRARY_PREFIX + std::string("timidity") + LIBRARY_SUFFIX);
+    m_usedLibName = source;
 
   m_soundfont = kodi::GetSettingString("soundfont");
 }
@@ -122,6 +127,8 @@ CTimidityCodec::~CTimidityCodec()
 {
   if (m_song)
     Timidity_FreeSong(m_song);
+  if (!m_tmpFileName.empty())
+    kodi::vfs::DeleteFile(m_tmpFileName);
 
   if (m_useChild)
     kodi::vfs::DeleteFile(m_usedLibName);
@@ -160,31 +167,13 @@ bool CTimidityCodec::Init(const std::string& filename, unsigned int filecache,
   if (res != 0)
     return false;
 
-  kodi::vfs::CFile file;
-  if (!file.OpenFile(filename))
+  std::stringstream ss;
+  ss << "timiditiy-" << static_cast<void*>(this) << ".mid";
+  m_tmpFileName = kodi::GetTempAddonPath(ss.str());
+  if (!kodi::vfs::CopyFile(filename, m_tmpFileName))
     return false;
 
-  int len = file.GetLength();
-  uint8_t* data = new uint8_t[len];
-  if (!data)
-    return false;
-
-  file.Read(data, len);
-
-  const char* tempfile = tmpnam(nullptr);
-
-  FILE* f = fopen(tempfile,"wb");
-  if (!f)
-  {
-    delete[] data;
-    return false;
-  }
-  fwrite(data, 1, len, f);
-  fclose(f);
-  delete[] data;
-
-  m_song = Timidity_LoadSong((char*)tempfile);
-  unlink(tempfile);
+  m_song = Timidity_LoadSong((char*)m_tmpFileName.c_str());
   if (!m_song)
     return false;
 

@@ -54,4 +54,7 @@ endif()
 include_directories(${CMAKE_CURRENT_SOURCE_DIR} timidity libarc utils)
 
 add_library(timidity SHARED ${SOURCES})
+if(NOT WIN32)
+  target_link_libraries(timidity m)
+endif()
 set_property(TARGET timidity PROPERTY POSITION_INDEPENDENT_CODE ON)
