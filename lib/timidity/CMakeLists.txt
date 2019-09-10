@@ -41,7 +41,6 @@ set(SOURCES timidity/aq.c
             utils/getopt.c)
  
 add_definitions(-DHAVE_ALSA_ASOUNDLIB=1 -DHAVE_LIBASOUND=1 -DHAVE_ERRNO_H=1)
-
 if(APPLE)
   add_definitions(-DHAVE_STRLCPY=1 -DHAVE_STRLCAT=1)
 endif(APPLE)
@@ -53,8 +52,11 @@ endif()
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR} timidity libarc utils)
 
-add_library(timidity SHARED ${SOURCES})
+add_library(timidity_0 SHARED ${SOURCES})
+add_library(timidity_1 SHARED ${SOURCES})
 if(NOT WIN32)
-  target_link_libraries(timidity m)
+  target_link_libraries(timidity_0 m)
+  target_link_libraries(timidity_1 m)
 endif()
-set_property(TARGET timidity PROPERTY POSITION_INDEPENDENT_CODE ON)
+set_property(TARGET timidity_0 PROPERTY POSITION_INDEPENDENT_CODE ON)
+set_property(TARGET timidity_1 PROPERTY POSITION_INDEPENDENT_CODE ON)

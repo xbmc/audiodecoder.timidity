@@ -15,7 +15,7 @@ set(TIMIDITY_SOURCES src/TimidityCodec.cpp)
 add_definitions(-DLIBRARY_PREFIX="${CMAKE_SHARED_LIBRARY_PREFIX}"
                 -DLIBRARY_SUFFIX="${CMAKE_SHARED_LIBRARY_SUFFIX}")
 
-set(TIMIDITY_ADDITIONAL_BINARY $<TARGET_FILE:timidity>)
+set(TIMIDITY_ADDITIONAL_BINARY $<TARGET_FILE:timidity_0> $<TARGET_FILE:timidity_1>)
 
 if(WIN32)
   find_package(dlfcn-win32 REQUIRED)
