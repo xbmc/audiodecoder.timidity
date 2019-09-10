@@ -33,29 +33,13 @@ extern "C" {
 #include "timidity/timidity_codec.h"
 }
 
-class ATTRIBUTE_HIDDEN CMyAddon : public kodi::addon::CAddonBase
-{
-public:
-  CMyAddon() = default;
-  ADDON_STATUS CreateInstance(int instanceType, std::string instanceID, KODI_HANDLE instance, KODI_HANDLE& addonInstance) override;
-
-  void DecreaseUsedAmount()
-  {
-    if (m_usedAmount > 0)
-      m_usedAmount--;
-  }
-
-private:
-  int m_usedAmount = 0;
-};
-
 /*****************************************************************************************************/
 
 class ATTRIBUTE_HIDDEN CTimidityCodec : public kodi::addon::CInstanceAudioDecoder,
                                         private CDllHelper
 {
 public:
-  CTimidityCodec(KODI_HANDLE instance, CMyAddon* addon, bool useChild);
+  CTimidityCodec(KODI_HANDLE instance);
   ~CTimidityCodec();
 
   bool Init(const std::string& filename, unsigned int filecache,
@@ -69,13 +53,12 @@ public:
                std::string& artist, int& length) override;
 
 private:
-  std::string m_usedLibName;
   std::string m_tmpFileName;
-  CMyAddon* m_addon;
-  bool m_useChild;
   std::string m_soundfont;
-  MidiSong* m_song;
-  int m_pos;
+  MidiSong* m_song = nullptr;
+  int m_pos = 0;
+
+  static unsigned int m_usedLib;
 
   int (*Timidity_Init)(int rate, int bits_per_sample, int channels, const char * soundfont_file, const char* cfgfile);
   void (*Timidity_Cleanup)();
@@ -87,41 +70,13 @@ private:
   char *(*Timidity_ErrorMsg)();
 };
 
-/*****************************************************************************************************/
-
-ADDON_STATUS CMyAddon::CreateInstance(int instanceType, std::string instanceID, KODI_HANDLE instance, KODI_HANDLE& addonInstance)
-{
-  addonInstance = new CTimidityCodec(instance, this, ++m_usedAmount > 1);
-  return ADDON_STATUS_OK;
-}
+unsigned int CTimidityCodec::m_usedLib = 0;
 
 /*****************************************************************************************************/
 
-CTimidityCodec::CTimidityCodec(KODI_HANDLE instance, CMyAddon* addon, bool useChild)
-  : CInstanceAudioDecoder(instance),
-    m_addon(addon),
-    m_useChild(useChild),
-    m_song(nullptr)
+CTimidityCodec::CTimidityCodec(KODI_HANDLE instance)
+  : CInstanceAudioDecoder(instance)
 {
-  std::string source = kodi::GetAddonPath(LIBRARY_PREFIX + std::string("timidity") + LIBRARY_SUFFIX);
-  if (m_useChild)
-  {
-    std::stringstream ss;
-    ss << static_cast<void*>(this);
-#if defined(TARGET_ANDROID)
-    m_usedLibName = kodi::vfs::TranslateSpecialProtocol(std::string("special://xbmcaltbinaddons/") + LIBRARY_PREFIX + "timidity-" + ss.str() + LIBRARY_SUFFIX);
-#else
-    m_usedLibName = kodi::GetTempAddonPath(LIBRARY_PREFIX + std::string("timidity-") + ss.str() + LIBRARY_SUFFIX);
-#endif
-    if (!kodi::vfs::CopyFile(source, m_usedLibName))
-    {
-      kodi::Log(ADDON_LOG_ERROR, "Failed to create libtimidity copy");
-      return;
-    }
-  }
-  else
-    m_usedLibName = source;
-
   m_soundfont = kodi::GetSettingString("soundfont");
 }
 
@@ -131,11 +86,6 @@ CTimidityCodec::~CTimidityCodec()
     Timidity_FreeSong(m_song);
   if (!m_tmpFileName.empty())
     kodi::vfs::DeleteFile(m_tmpFileName);
-
-  if (m_useChild)
-    kodi::vfs::DeleteFile(m_usedLibName);
-
-  m_addon->DecreaseUsedAmount();
 }
 
 bool CTimidityCodec::Init(const std::string& filename, unsigned int filecache,
@@ -150,7 +100,10 @@ bool CTimidityCodec::Init(const std::string& filename, unsigned int filecache,
     return false;
   }
 
-  if (!LoadDll(m_usedLibName)) return false;
+  m_usedLib = !m_usedLib;
+  std::string source = kodi::GetAddonPath(LIBRARY_PREFIX + std::string("timidity_") + std::to_string(m_usedLib) + LIBRARY_SUFFIX);
+
+  if (!LoadDll(source)) return false;
   if (!REGISTER_DLL_SYMBOL(Timidity_Init)) return false;
   if (!REGISTER_DLL_SYMBOL(Timidity_Cleanup)) return false;
   if (!REGISTER_DLL_SYMBOL(Timidity_GetLength)) return false;
@@ -313,8 +266,21 @@ bool CTimidityCodec::ReadTag(const std::string& filename, std::string& title,
     title = firstTextEvent;
 
   length = -1;
-  delete data;
+  delete[] data;
   return true;
 }
+
+/*****************************************************************************************************/
+
+class ATTRIBUTE_HIDDEN CMyAddon : public kodi::addon::CAddonBase
+{
+public:
+  CMyAddon() = default;
+  ADDON_STATUS CreateInstance(int instanceType, std::string instanceID, KODI_HANDLE instance, KODI_HANDLE& addonInstance) override
+  {
+    addonInstance = new CTimidityCodec(instance);
+    return ADDON_STATUS_OK;
+  }
+};
 
 ADDONCREATOR(CMyAddon)
