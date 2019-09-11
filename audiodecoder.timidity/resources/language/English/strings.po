@@ -17,9 +17,21 @@ msgid "Soundfont or config file"
 msgstr ""
 
 msgctxt "#30001"
-msgid "Timidity Audio Decode"
+msgid "To use TiMidity you need a working timidity.cfg config file or sound fonts"
 msgstr ""
 
 msgctxt "#30002"
+msgid "Scan MIDI for title"
+msgstr ""
+
+msgctxt "#30003"
+msgid "Search in MIDI file for information to get an exact title"
+msgstr ""
+
+msgctxt "#30010"
+msgid "Timidity Audio Decode"
+msgstr ""
+
+msgctxt "#30011"
 msgid "Soundfont not set in settings!"
 msgstr ""
