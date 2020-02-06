@@ -1,8 +1,8 @@
 Source: kodi-audiodecoder-timidity
 Priority: extra
-Maintainer: Arne Morten Kvarving <cptspiff@gmail.com>
-Build-Depends: debhelper (>= 8.0.0), cmake, kodi-addon-dev, libp8-platform-dev
-Standards-Version: 3.9.2
+Maintainer: Nobody <nobody@kodi.tv>
+Build-Depends: debhelper (>= 9.0.0), cmake, kodi-addon-dev
+Standards-Version: 4.1.2
 Section: libs
 
 Package: kodi-audiodecoder-timidity
