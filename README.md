@@ -2,9 +2,10 @@
 
 This is a [Kodi](https://kodi.tv) audio decoder addon for midi files.
 
+[![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](LICENSE.md)
 [![Build Status](https://travis-ci.org/xbmc/audiodecoder.timidity.svg?branch=Matrix)](https://travis-ci.org/xbmc/audiodecoder.timidity/branches)
 [![Build Status](https://dev.azure.com/teamkodi/binary-addons/_apis/build/status/xbmc.audiodecoder.timidity?branchName=Matrix)](https://dev.azure.com/teamkodi/binary-addons/_build/latest?definitionId=2&branchName=Matrix)
-<!--- [![Build Status](https://ci.appveyor.com/api/projects/status/github/xbmc/audiodecoder.timidity?branch=Matrix&svg=true)](https://ci.appveyor.com/project/xbmc/audiodecoder-timidity?branch=Matrix) -->
+[![Build Status](https://jenkins.kodi.tv/view/Addons/job/xbmc/job/audiodecoder.timidity/job/Matrix/badge/icon)](https://jenkins.kodi.tv/blue/organizations/jenkins/xbmc%2Faudiodecoder.timidity/branches/)
 
 ## Requirements
 

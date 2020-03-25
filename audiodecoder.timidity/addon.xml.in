@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <addon
   id="audiodecoder.timidity"
-  version="2.2.1"
+  version="2.2.2"
   name="Timidity Audio Decoder"
   provider-name="spiff">
   <requires>@ADDON_DEPENDS@</requires>
@@ -19,5 +19,8 @@ To use TiMidity you need a working timidity.cfg config file or sound fonts. Copy
     <platform>@PLATFORM@</platform>
     <license>GPL-2.0</license>
     <source>https://github.com/xbmc/audiodecoder.timidity</source>
+    <assets>
+      <icon>icon.png</icon>
+    </assets>
   </extension>
 </addon>
