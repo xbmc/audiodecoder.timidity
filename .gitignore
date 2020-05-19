@@ -1,7 +1,16 @@
 # build artifacts
 build/
-obj-x86_64-linux-gnu/
 audiodecoder.*/addon.xml
+
+# Debian build files
+debian/changelog
+debian/files
+debian/*.log
+debian/*.substvars
+debian/.debhelper/
+debian/tmp/
+debian/kodi-audiodecoder-*/
+obj-x86_64-linux-gnu/
 
 # commonly used editors
 # vim
@@ -26,5 +35,16 @@ audiodecoder.*/addon.xml
 # clion
 .idea/
 
-# KDev
-*.kdev4
+# to prevent add after a "git format-patch VALUE" and "git add ." call
+/*.patch
+
+# Visual Studio Code
+.vscode
+
+# to prevent add if project code opened by Visual Studio over CMake file
+.vs/
+
+# General MacOS
+.DS_Store
+.AppleDouble
+.LSOverride

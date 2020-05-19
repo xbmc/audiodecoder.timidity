@@ -24,10 +24,10 @@ extern "C" {
 /*****************************************************************************************************/
 
 class ATTRIBUTE_HIDDEN CTimidityCodec : public kodi::addon::CInstanceAudioDecoder,
-                                        private CDllHelper
+                                        private kodi::tools::CDllHelper
 {
 public:
-  CTimidityCodec(KODI_HANDLE instance);
+  CTimidityCodec(KODI_HANDLE instance, const std::string& version);
   ~CTimidityCodec();
 
   bool Init(const std::string& filename, unsigned int filecache,
@@ -62,8 +62,8 @@ unsigned int CTimidityCodec::m_usedLib = 0;
 
 /*****************************************************************************************************/
 
-CTimidityCodec::CTimidityCodec(KODI_HANDLE instance)
-  : CInstanceAudioDecoder(instance)
+CTimidityCodec::CTimidityCodec(KODI_HANDLE instance, const std::string& version)
+  : CInstanceAudioDecoder(instance, version)
 {
   m_soundfont = kodi::GetSettingString("soundfont");
 }
@@ -264,9 +264,9 @@ class ATTRIBUTE_HIDDEN CMyAddon : public kodi::addon::CAddonBase
 {
 public:
   CMyAddon() = default;
-  ADDON_STATUS CreateInstance(int instanceType, std::string instanceID, KODI_HANDLE instance, KODI_HANDLE& addonInstance) override
+  ADDON_STATUS CreateInstance(int instanceType, const std::string& instanceID, KODI_HANDLE instance, const std::string& version, KODI_HANDLE& addonInstance) override
   {
-    addonInstance = new CTimidityCodec(instance);
+    addonInstance = new CTimidityCodec(instance, version);
     return ADDON_STATUS_OK;
   }
 };
