@@ -11,6 +11,7 @@ include_directories(${PROJECT_SOURCE_DIR}/lib
 add_subdirectory(lib/timidity)
 
 set(TIMIDITY_SOURCES src/TimidityCodec.cpp)
+set(TIMIDITY_HEADERS src/TimidityCodec.h)
 
 add_definitions(-DLIBRARY_PREFIX="${CMAKE_SHARED_LIBRARY_PREFIX}"
                 -DLIBRARY_SUFFIX="${CMAKE_SHARED_LIBRARY_SUFFIX}")
