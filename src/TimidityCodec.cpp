@@ -33,12 +33,11 @@ public:
   bool Init(const std::string& filename, unsigned int filecache,
             int& channels, int& samplerate,
             int& bitspersample, int64_t& totaltime,
-            int& bitrate, AEDataFormat& format,
-            std::vector<AEChannel>& channellist) override;
+            int& bitrate, AudioEngineDataFormat& format,
+            std::vector<AudioEngineChannel>& channellist) override;
   int ReadPCM(uint8_t* buffer, int size, int& actualsize) override;
   int64_t Seek(int64_t time) override;
-  bool ReadTag(const std::string& file, std::string& title,
-               std::string& artist, int& length) override;
+  bool ReadTag(const std::string& filename, kodi::addon::AudioDecoderInfoTag& tag) override;
 
 private:
   std::string m_tmpFileName;
@@ -79,8 +78,8 @@ CTimidityCodec::~CTimidityCodec()
 bool CTimidityCodec::Init(const std::string& filename, unsigned int filecache,
                      int& channels, int& samplerate,
                      int& bitspersample, int64_t& totaltime,
-                     int& bitrate, AEDataFormat& format,
-                     std::vector<AEChannel>& channellist)
+                     int& bitrate, AudioEngineDataFormat& format,
+                     std::vector<AudioEngineChannel>& channellist)
 {
   if (m_soundfont.empty())
   {
@@ -126,8 +125,8 @@ bool CTimidityCodec::Init(const std::string& filename, unsigned int filecache,
   samplerate = 48000;
   bitspersample = 16;
   totaltime = Timidity_GetLength(m_song);
-  format = AE_FMT_S16NE;
-  channellist = { AE_CH_FL, AE_CH_FR };
+  format = AUDIOENGINE_FMT_S16NE;
+  channellist = { AUDIOENGINE_CH_FL, AUDIOENGINE_CH_FR };
   bitrate = 0;
 
   return true;
@@ -169,8 +168,7 @@ int64_t CTimidityCodec::Seek(int64_t time)
 #define MIDI_TIMESIGNATURE 0xFF58
 #define MIDI_END_OF_TRACK 0xFF2F
 
-bool CTimidityCodec::ReadTag(const std::string& filename, std::string& title,
-                             std::string& artist, int& length)
+bool CTimidityCodec::ReadTag(const std::string& filename, kodi::addon::AudioDecoderInfoTag& tag)
 {
   if (!kodi::GetSettingBoolean("scantext"))
     return false;
@@ -196,6 +194,7 @@ bool CTimidityCodec::ReadTag(const std::string& filename, std::string& title,
 
   unsigned int trackNameCnt = 0;
   std::string firstTextEvent;
+  std::string title;
   while (ptr < len)
   {
     uint32_t trackHeader = data[ptr+3] | data[ptr+2] << 8 | data[ptr+1] << 16 | data[ptr] << 24;
@@ -253,7 +252,8 @@ bool CTimidityCodec::ReadTag(const std::string& filename, std::string& title,
   if (trackNameCnt > 3)
     title = firstTextEvent;
 
-  length = -1;
+  tag.SetTitle(title);
+  tag.SetDuration(-1);
   delete[] data;
   return true;
 }
