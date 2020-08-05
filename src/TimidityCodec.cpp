@@ -8,6 +8,8 @@
 
 #include "TimidityCodec.h"
 
+#include "MidiScan.h"
+
 #include <kodi/Filesystem.h>
 #include <kodi/General.h>
 #include <sstream>
@@ -94,6 +96,28 @@ bool CTimidityCodec::Init(const std::string& filename,
   channellist = {AUDIOENGINE_CH_FL, AUDIOENGINE_CH_FR};
   bitrate = 0;
 
+  /*
+  // Currently not usable as there nothing in Kodi or addon to show related song lyrics!
+  // Thats why currently commented out.
+  std::string filenameLyrics = filename.substr(0, filename.size() - 4) + ".lrc";
+  if (!kodi::vfs::FileExists(filenameLyrics))
+  {
+    CMidiScan scan(filename);
+    if (scan.Scan() && !scan.GetLyrics().empty())
+    {
+      kodi::vfs::CFile lyricsFile;
+      lyricsFile.OpenFileForWrite(filenameLyrics);
+
+      size_t written = 0;
+      size_t size = scan.GetLyrics().length();
+      while (written < size)
+      {
+        written += lyricsFile.Write(scan.GetLyrics().c_str() + written, size - written);
+      }
+    }
+  }
+  */
+
   return true;
 }
 
@@ -124,91 +148,14 @@ bool CTimidityCodec::ReadTag(const std::string& filename, kodi::addon::AudioDeco
   if (!kodi::GetSettingBoolean("scantext"))
     return false;
 
-  kodi::vfs::CFile file;
-  if (!file.OpenFile(filename))
-    return false;
+  CMidiScan scan(filename);
+  scan.Scan();
 
-  int len = file.GetLength();
-  uint8_t* data = new uint8_t[len];
-  if (!data)
-    return false;
+  tag.SetArtist(scan.GetArtist());
+  tag.SetTitle(scan.GetTitle());
+  tag.SetLyrics(scan.GetLyrics());
+  tag.SetDuration(scan.GetDuration());
 
-  file.Read(data, len);
-
-  uint32_t header = data[3] | data[2] << 8 | data[1] << 16 | data[0] << 24;
-  uint32_t headerLength = data[7] | data[6] << 8 | data[5] << 16 | data[4] << 24;
-  if (header != MIDI_HEADER || headerLength != 6)
-    return false;
-
-  std::vector<int> trackDataFormats;
-  unsigned int ptr = 14;
-
-  unsigned int trackNameCnt = 0;
-  std::string firstTextEvent;
-  std::string title;
-  while (ptr < len)
-  {
-    uint32_t trackHeader =
-        data[ptr + 3] | data[ptr + 2] << 8 | data[ptr + 1] << 16 | data[ptr] << 24;
-    int32_t trackHeaderLength =
-        data[ptr + 7] | data[ptr + 6] << 8 | data[ptr + 5] << 16 | data[ptr + 4] << 24;
-
-    if (trackHeader != MIDI_MTrk)
-      break;
-
-    unsigned int blockPtr = 0;
-    while (blockPtr < trackHeaderLength)
-    {
-      uint32_t blockIdentifier = data[blockPtr + ptr + 10] | data[blockPtr + ptr + 9] << 8 |
-                                 data[blockPtr + ptr + 8] << 16;
-      uint8_t blockLength = data[blockPtr + ptr + 11];
-      if (blockLength == 0 || blockIdentifier == MIDI_CHANNEL_PREFIX)
-        break;
-
-      if (blockIdentifier == MIDI_TEXT_EVENT)
-      {
-        char* name = new char[blockLength + 1];
-        memset(name, 0, blockLength + 1);
-        strncpy(name, reinterpret_cast<const char*>(data + blockPtr + ptr + 12), blockLength);
-        if (strncmp(name, "untitled", blockLength) != 0)
-        {
-          if (title.empty())
-            title += name;
-
-          if (firstTextEvent.empty())
-            firstTextEvent = name;
-        }
-        delete[] name;
-      }
-      else if (blockIdentifier == MIDI_TRACK_NAME)
-      {
-        char* name = new char[blockLength + 1];
-        memset(name, 0, blockLength + 1);
-        strncpy(name, reinterpret_cast<const char*>(data + blockPtr + ptr + 12), blockLength);
-        if (strncmp(name, "untitled", blockLength) != 0)
-        {
-          if (!title.empty())
-            title += " - ";
-          title += name;
-
-          trackNameCnt++;
-        }
-        delete[] name;
-      }
-
-      blockPtr += blockLength + 4;
-    }
-
-    ptr += trackHeaderLength + 8;
-  }
-
-  // Prevent the case the track i used for instruments
-  if (trackNameCnt > 3)
-    title = firstTextEvent;
-
-  tag.SetTitle(title);
-  tag.SetDuration(-1);
-  delete[] data;
   return true;
 }
 
