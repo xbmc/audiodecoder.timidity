@@ -222,6 +222,11 @@ int load_soundfont(SFInfo *sf, struct timidity_file *fd)
 	if (inbags.bag) free(inbags.bag);
 	if (inbags.gen) free(inbags.gen);
 
+	prbags.bag = NULL;
+	prbags.gen = NULL;
+	inbags.bag = NULL;
+	inbags.gen = NULL;
+
 	return 0;
 }
 
@@ -732,7 +737,6 @@ static void generate_layers(SFHeader *hdr, SFHeader *next, SFBags *bags)
 			return;
 		}
 		layp->list = (SFGenRec*)safe_malloc(sizeof(SFGenRec) * layp->nlists);
-
 		memcpy(layp->list, &bags->gen[genNdx],
 		       sizeof(SFGenRec) * layp->nlists);
 	}
@@ -745,10 +749,9 @@ static void generate_layers(SFHeader *hdr, SFHeader *next, SFBags *bags)
 static void free_layer(SFHeader *hdr)
 {
 	int i;
-
 	for (i = 0; i < hdr->nlayers; i++) {
 		SFGenLayer *layp = &hdr->layer[i];
-		if (layp->nlists > 0)
+		if (layp->nlists >= 0)
 			free(layp->list);
 	}
 	if (hdr->nlayers > 0)

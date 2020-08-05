@@ -177,7 +177,7 @@ static void ctl_close(void);
 static int ctl_read(int32 *valp);
 static int cmsg(int type, int verbosity_level, char *fmt, ...);
 static void ctl_event(CtlEvent *e);
-static void ctl_pass_playing_list(int n, char *args[]);
+static int ctl_pass_playing_list(int n, char *args[]);
 
 /**********************************/
 /* export the interface functions */
@@ -187,12 +187,14 @@ static void ctl_pass_playing_list(int n, char *args[]);
 ControlMode ctl=
 {
     "ALSA sequencer interface", 'A',
+    "alsaseq",
     1,0,0,
     0,
     ctl_open,
     ctl_close,
     ctl_pass_playing_list,
     ctl_read,
+    NULL,
     cmsg,
     ctl_event
 };
@@ -308,7 +310,7 @@ static int set_realtime_priority(void)
         return 0;
 }
 
-static void ctl_pass_playing_list(int n, char *args[])
+static int ctl_pass_playing_list(int n, char *args[])
 {
 	double btime;
 	int i, j;
@@ -323,7 +325,7 @@ static void ctl_pass_playing_list(int n, char *args[])
 
 	if (alsa_seq_open(&alsactx.handle) < 0) {
 		fprintf(stderr, "error in snd_seq_open\n");
-		return;
+		return 1;
 	}
 	alsactx.queue = -1;
 	alsactx.client = snd_seq_client_id(alsactx.handle);
@@ -342,7 +344,7 @@ static void ctl_pass_playing_list(int n, char *args[])
 		int port;
 		port = alsa_create_port(alsactx.handle, i);
 		if (port < 0)
-			return;
+			return 1;
 		alsactx.port[i] = port;
 		alsa_set_timestamping(&alsactx, port);
 		printf(" %d:%d", alsactx.client, alsactx.port[i]);
@@ -388,29 +390,11 @@ static void ctl_pass_playing_list(int n, char *args[])
 	j += note_key_offset, j -= floor(j / 12.0) * 12;
 	current_freq_table = j;
 
-	play_mode->close_output();
-
-	if (ctl.flags & CTLF_DAEMONIZE)
-	{
-		int pid = fork();
-		FILE *pidf;
-		switch (pid)
-		{
-			case 0:			// child is the daemon
-				break;
-			case -1:		// error status return
-				exit(7);
-			default:		// no error, doing well
-				if ((pidf = fopen( "/var/run/timidity.pid", "w" )) != NULL )
-					fprintf( pidf, "%d\n", pid );
-				exit(0);
-		}
-	}
-
 	for (;;) {
 		server_reset();
 		doit(&alsactx);
 	}
+	return 0;
 }
 
 /*
@@ -529,13 +513,18 @@ static void doit(struct seq_context *ctxp)
 		}
 		if (! ctxp->active || ! IS_STREAM_TRACE) {
 			fd_set rfds;
-			struct timeval timeout;
 			FD_ZERO(&rfds);
 			FD_SET(ctxp->fd, &rfds);
-			timeout.tv_sec = 0;
-			timeout.tv_usec = 10000; /* 10ms */
-			if (select(ctxp->fd + 1, &rfds, NULL, NULL, &timeout) < 0)
-				goto __done;
+			if (! IS_STREAM_TRACE) {
+				struct timeval timeout;
+				timeout.tv_sec = 0;
+				timeout.tv_usec = 10000; /* 10ms */
+				if (select(ctxp->fd + 1, &rfds, NULL, NULL, &timeout) < 0)
+					goto __done;
+			} else {
+				if (select(ctxp->fd + 1, &rfds, NULL, NULL, NULL) < 0)
+					goto __done;
+			}				
 		}
 	}
 
@@ -557,9 +546,9 @@ static void server_reset(void)
 
 static int start_sequencer(struct seq_context *ctxp)
 {
-	if (play_mode->open_output() < 0) {
+	if (play_mode->acntl(PM_REQ_PLAY_START, NULL) < 0) {
 		ctl.cmsg(CMSG_FATAL, VERB_NORMAL,
-			 "Couldn't open %s (`%c')",
+			 "Couldn't start %s (`%c')",
 			 play_mode->id_name, play_mode->id_character);
 		return 0;
 	}
@@ -589,7 +578,7 @@ static void stop_sequencer(struct seq_context *ctxp)
 		snd_seq_stop_queue(ctxp->handle, ctxp->queue, NULL);
 		snd_seq_drain_output(ctxp->handle);
 	}
-	play_mode->close_output();
+	play_mode->acntl(PM_REQ_PLAY_END, NULL);
 	free_instruments(0);
 	free_global_mblock();
 	ctxp->used = 0;

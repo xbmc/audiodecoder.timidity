@@ -48,6 +48,7 @@
 #include "playmidi.h"
 #include "readmidi.h"
 
+
 static int open_output(void); /* 0=success, 1=warning, -1=fatal error */
 static void close_output(void);
 static int output_data(char *buf, int32 bytes);
@@ -68,7 +69,7 @@ PlayMode dpm = {
 #else
     PE_SIGNED|PE_16BIT,
 #endif
-    PF_PCM_STREAM,
+    PF_PCM_STREAM|PF_FILE_OUTPUT,
     -1,
     {0,0,0,0,0},
     "AIFF file", 'a',
@@ -90,7 +91,7 @@ static int write_u32(uint32 value)
 {
     int n;
     value = BE_LONG(value);
-    if((n = write(dpm.fd, (char *)&value, 4)) == -1)
+    if((n = std_write(dpm.fd, (char *)&value, 4)) == -1)
     {
 	ctl->cmsg(CMSG_ERROR, VERB_NORMAL, "%s: write: %s",
 		  dpm.name, strerror(errno));
@@ -104,7 +105,7 @@ static int write_u16(uint16 value)
 {
     int n;
     value = BE_SHORT(value);
-    if((n = write(dpm.fd, (char *)&value, 2)) == -1)
+    if((n = std_write(dpm.fd, (char *)&value, 2)) == -1)
     {
 	ctl->cmsg(CMSG_ERROR, VERB_NORMAL, "%s: write: %s",
 		  dpm.name, strerror(errno));
@@ -117,7 +118,7 @@ static int write_u16(uint16 value)
 static int write_str(const char *s)
 {
     int n;
-    if((n = write(dpm.fd, s, strlen(s))) == -1)
+    if((n = std_write(dpm.fd, s, strlen(s))) == -1)
     {
 	ctl->cmsg(CMSG_ERROR, VERB_NORMAL, "%s: write: %s",
 		  dpm.name, strerror(errno));
@@ -133,7 +134,7 @@ static int write_ieee_80bitfloat(double num)
     int n;
     ConvertToIeeeExtended(num, bytes);
 
-    if((n = write(dpm.fd, bytes, 10)) == -1)
+    if((n = std_write(dpm.fd, bytes, 10)) == -1)
     {
 	ctl->cmsg(CMSG_ERROR, VERB_NORMAL, "%s: write: %s",
 		  dpm.name, strerror(errno));
@@ -273,12 +274,12 @@ static int aiff_output_open(const char *fname)
   /* compression type */
   if(compressed) {
     if(write_str((dpm.encoding & PE_ULAW) ? "ulaw" : "alaw") == -1) return -1;
-    if(write(dpm.fd, &compressionNameLength, 1) == -1) return -1;
+    if(std_write(dpm.fd, &compressionNameLength, 1) == -1) return -1;
     if(write_str(compressionName) == -1) return -1;
   }
   if(comm_chunk_size & 1) {
     padByte = 0;
-    if(write(dpm.fd, &padByte, 1) == -1) return -1;
+    if(std_write(dpm.fd, &padByte, 1) == -1) return -1;
     comm_chunk_size++;
   }
 
@@ -352,8 +353,9 @@ static int open_output(void)
     dpm.encoding = validate_encoding(dpm.encoding, include_enc, exclude_enc);
 
     if(dpm.name == NULL) {
+      if (!current_file_info || !current_file_info->filename)
+        return -1;
       dpm.flag |= PF_AUTO_SPLIT_FILE;
-      dpm.name = NULL;
     } else {
       dpm.flag &= ~PF_AUTO_SPLIT_FILE;
       if(aiff_output_open(dpm.name) == -1)
@@ -373,7 +375,7 @@ static int output_data(char *buf, int32 bytes)
 
     if(dpm.fd == -1) return -1;
 
-    while(((n = write(dpm.fd, buf, bytes)) == -1) && errno == EINTR)
+    while(((n = std_write(dpm.fd, buf, bytes)) == -1) && errno == EINTR)
 	;
     if(n == -1)
     {
@@ -411,13 +413,11 @@ static int acntl(int request, void *arg)
   case PM_REQ_PLAY_START:
     if(dpm.flag & PF_AUTO_SPLIT_FILE)
       return auto_aiff_output_open(current_file_info->filename);
-    break;
+    return 0;
   case PM_REQ_PLAY_END:
-    if(dpm.flag & PF_AUTO_SPLIT_FILE) {
+    if(dpm.flag & PF_AUTO_SPLIT_FILE)
       close_output();
-      return 0;
-    }
-    break;
+    return 0;
   case PM_REQ_DISCARD:
     return 0;
   }
@@ -515,3 +515,4 @@ static void ConvertToIeeeExtended(double num, char *bytes)
     bytes[8] = (char)(loMant >> 8);
     bytes[9] = (char)loMant;
 }
+

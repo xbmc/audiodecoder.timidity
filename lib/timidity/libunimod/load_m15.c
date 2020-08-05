@@ -20,7 +20,7 @@
 
 /*==============================================================================
 
-  $Id: load_m15.c,v 1.29 1999/10/25 16:31:41 miod Exp $
+  $Id$
 
   15 instrument MOD loader
   Also supports Ultimate Sound Tracker (old M15 format)
@@ -72,7 +72,7 @@ static BOOL ust_loader = 0;	/* if TRUE, load as an ust module. */
 
 /* known file formats which can confuse the loader */
 #define REJECT 2
-static char *signatures[REJECT] =
+static const char *signatures[REJECT] =
 {
   "CAKEWALK",			/* cakewalk midi files */
   "SZDD"			/* Microsoft compressed files */
@@ -248,6 +248,9 @@ M15_Test (void)
 	  ust_loader = 1;
 	  return 1;
 	}
+
+	  if (!ust_loader)
+		return 1;
     }
 
   for (numpat = 0, t = 0; t < mh.songlength; t++)

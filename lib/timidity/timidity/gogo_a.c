@@ -25,6 +25,9 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif /* HAVE_CONFIG_H */
+#ifdef __POCC__
+#include <sys/types.h>
+#endif //for off_t
 #include "interface.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -81,7 +84,7 @@ PlayMode dpm = {
 #else
     PE_16BIT|PE_SIGNED|PE_BYTESWAP,
 #endif
-    PF_PCM_STREAM,
+    PF_PCM_STREAM|PF_FILE_OUTPUT,
     -1,
     {0,0,0,0,0},
     "MP3 GOGO", 'g',
@@ -1012,7 +1015,7 @@ static int __stdcall MPGEthread(void)
 #if !defined ( IA_W32GUI ) && !defined ( IA_W32G_SYN )
 	if(use_gogo_commandline_options && gogo_commandline_options!=NULL){
 		gogo_opts_reset();
-		set_gogo_opts_use_commandline_options(gogo_commandline_options);
+		set_gogo_opts_use_commandline_options((char *)gogo_commandline_options);
 	}
 #else
 	gogo_ConfigDialogInfoApply();
@@ -1259,7 +1262,6 @@ static int open_output(void)
 #if !defined ( IA_W32GUI ) && !defined ( IA_W32G_SYN )
     if(dpm.name == NULL) {
       dpm.flag |= PF_AUTO_SPLIT_FILE;
-      dpm.name = NULL;
     } else {
       dpm.flag &= ~PF_AUTO_SPLIT_FILE;
       if((dpm.fd = gogo_output_open(dpm.name)) == -1)
@@ -1347,16 +1349,17 @@ static void close_output(void)
 static int acntl(int request, void *arg)
 {
 	switch(request) {
-	case PM_REQ_PLAY_START:
-		if(dpm.flag & PF_AUTO_SPLIT_FILE)
-			return auto_gogo_output_open(current_file_info->filename,current_file_info->seq_name);
-		break;
+  case PM_REQ_PLAY_START:
+    if(dpm.flag & PF_AUTO_SPLIT_FILE){
+      if(  ( NULL == current_file_info ) || (NULL == current_file_info->filename ) )
+        return auto_gogo_output_open("Output.mid",NULL);
+      return auto_gogo_output_open(current_file_info->filename, current_file_info->seq_name);
+   }
+    return 0;
 	case PM_REQ_PLAY_END:
-		if(dpm.flag & PF_AUTO_SPLIT_FILE) {
+		if(dpm.flag & PF_AUTO_SPLIT_FILE)
 			close_output();
-			return 0;
-		}
-		break;
+		return 0;
 	case PM_REQ_DISCARD:
 #if 1
 		gogo_buffer_reset();

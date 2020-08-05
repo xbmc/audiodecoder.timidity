@@ -80,7 +80,7 @@ extern int volatile_touch(void* dmy);
 
 
 /* integer type definitions: ISO C now knows a better way */
-#if __STDC_VERSION__ == 199901L || __GNUC__ >= 3
+#if defined(HAVE_STDINT_H) || __GNUC__ >= 3
 #include <stdint.h> // int types are defined here
 typedef  int8_t   int8;
 typedef uint8_t  uint8;
@@ -107,7 +107,10 @@ typedef unsigned short uint16;
 /* DEC MMS has 64 bit long words */
 /* Linux-Axp has also 64 bit long words */
 #if defined(DEC) || defined(__alpha__) \
-		|| defined(__ia64__) || defined (__x86_64__) || defined(__ppc64__)
+		|| defined(__ia64__) || defined (__x86_64__) \
+		|| defined(__ppc64__) || defined(__s390x__) \
+                || defined(__mips64__) || defined(__LP64__) \
+                || defined(_LP64)
 typedef          int   int32;
 typedef unsigned int  uint32;
 typedef          long  int64;
@@ -122,9 +125,14 @@ typedef          long long  int64;
 typedef unsigned long long uint64;
 #define TIMIDITY_HAVE_INT64 1
 #elif defined(_MSC_VER) 
-/* VC++. */
+/* VC++. or PellesC */
+# ifdef __POCC__
+typedef          __int64  int64;
+typedef unsigned __int64 uint64;
+# else
 typedef          _int64  int64;
 typedef unsigned _int64 uint64;
+# endif
 #define TIMIDITY_HAVE_INT64 1
 #elif defined(__BORLANDC__) || defined(__WATCOMC__)
 typedef 	__int64 int64;
@@ -138,6 +146,15 @@ typedef UInt64 uint64;
 #endif
 #endif /* 64bit arch */
 #endif /* C99 */
+
+/*  pointer size is not long in   WIN64 */
+#if defined(WIN32)  && (defined(_AMD64_) || defined(_ARM64_)) 
+typedef long long  ptr_size_t;
+typedef unsigned long long  u_ptr_size_t; 
+#else
+typedef long  ptr_size_t; 
+typedef unsigned long  u_ptr_size_t; 
+#endif 
 
 
 /* Instrument files are little-endian, MIDI files big-endian, so we
@@ -349,7 +366,7 @@ int usleep(unsigned int useconds); /* shut gcc warning up */
 #undef MAIL_NAME
 #endif /* __W32__ */
 
-#if defined(__BORLANDC__) || defined(__WATCOMC__)
+#if defined(__BORLANDC__) || defined(__WATCOMC__) || defined(__DMC__)
 /* strncasecmp() -> strncmpi(char *,char *,size_t) */
 //#define strncasecmp(a,b,c) strncmpi(a,b,c)
 //#define strcasecmp(a,b) strcmpi(a,b)
@@ -360,12 +377,34 @@ int usleep(unsigned int useconds); /* shut gcc warning up */
 #if defined(_MSC_VER)
 #define strncasecmp(a,b,c)	_strnicmp((a),(b),(c))
 #define strcasecmp(a,b)		_stricmp((a),(b))
+#ifndef __POCC__
 #define open _open
 #define close _close
-#define write _write
+//#define write _write
 #define lseek _lseek
 #define unlink _unlink
+#if _MSC_VER < 1500    /* 1500(VC9)  */
+#define write _write
+#ifdef HAVE_VSNPRINTF
+#define vsnprintf _vsnprintf 
+#endif
+#endif
 #pragma warning( 4 : 4305 4244 )
+#else
+#ifndef EPERM
+#define EPERM 1
+#endif
+#ifndef EINTR
+#define EINTR 4
+#endif
+#ifndef STDOUT_FILENO
+#define STDOUT_FILENO 1
+#endif
+#ifndef _MAX_PATH
+#define _MAX_PATH 260
+#endif
+#undef strncasecmp
+#endif
 #endif /* _MSC_VER */
 
 #define SAFE_CONVERT_LENGTH(len) (6 * (len) + 1)

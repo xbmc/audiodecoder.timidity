@@ -1,6 +1,6 @@
 /*
     TiMidity++ -- MIDI to WAVE converter and player
-    Copyright (C) 1999-2004 Masanao Izumo <iz@onicos.co.jp>
+    Copyright (C) 1999-2009 Masanao Izumo <iz@onicos.co.jp>
     Copyright (C) 1995 Tuukka Toivonen <tt@cgs.fi>
 
     This program is free software; you can redistribute it and/or modify
@@ -21,6 +21,9 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif /* HAVE_CONFIG_H */
+#ifdef __POCC__
+#include <sys/types.h>
+#endif //for off_t
 #include <stdio.h>
 #include <stdlib.h>
 #ifndef NO_STRING_H
@@ -86,10 +89,13 @@ int readmidi_error_flag = 0;
 int readmidi_wrd_mode = 0;
 int play_system_mode = DEFAULT_SYSTEM_MODE;
 
-static MidiEventList *evlist, *current_midi_point;
+/* Mingw gcc3 and Borland C hack */
+/* If these are not NULL initialized cause Hang up */
+/* why ?  I dont know. (Keishi Suenaga) */
+static MidiEventList *evlist=NULL, *current_midi_point=NULL;
 static int32 event_count;
 static MBlockList mempool;
-static StringTable string_event_strtab;
+static StringTable string_event_strtab = { 0 };
 static int current_read_track;
 static int karaoke_format, karaoke_title_flag;
 static struct midi_file_info *midi_file_info = NULL;
@@ -97,6 +103,7 @@ static char **string_event_table = NULL;
 static int    string_event_table_size = 0;
 int    default_channel_program[256];
 static MidiEvent timesig[256];
+TimeSegment *time_segments = NULL;
 
 void init_delay_status_gs(void);
 void init_chorus_status_gs(void);
@@ -155,7 +162,6 @@ UserDrumset *userdrum_last = (UserDrumset *)NULL;
 
 void init_userdrum();
 UserDrumset *get_userdrum(int bank, int prog);
-void recompute_userdrum(int bank, int prog);
 void recompute_userdrum_altassign(int bank,int group);
 
 typedef struct _UserInstrument {
@@ -211,7 +217,7 @@ void readmidi_add_event(MidiEvent *a_event)
     MidiEventList *newev;
     int32 at;
 
-    if(event_count++ == MAX_MIDI_EVENT)
+    if(event_count == MAX_MIDI_EVENT)
     {
 	if(!readmidi_error_flag)
 	{
@@ -221,6 +227,7 @@ void readmidi_add_event(MidiEvent *a_event)
 	}
 	return;
     }
+    event_count++;
 
     at = a_event->time;
     newev = alloc_midi_event();
@@ -469,9 +476,9 @@ static char *dumpstring(int type, int32 len, char *label, int allocp,
     si[len]='\0';
 
     if(type == 1 &&
-       current_read_track == 1 &&
        current_file_info->format == 1 &&
-       strncmp(si, "@KMIDI", 6) == 0)
+       (strncmp(si, "@K", 2) == 0)) 
+/* Karaoke string should be "@KMIDI KARAOKE FILE" */
 	karaoke_format = 1;
 
     code_convert(si, so, s_maxlen, NULL, NULL);
@@ -523,52 +530,63 @@ static void check_chorus_text_start(void)
     }
 }
 
+struct ctl_chg_types {
+    unsigned char mtype;
+    int ttype;
+} ctl_chg_list[] = {
+      { 0, ME_TONE_BANK_MSB },
+      { 1, ME_MODULATION_WHEEL },
+      { 2, ME_BREATH },
+      { 4, ME_FOOT },
+      { 5, ME_PORTAMENTO_TIME_MSB },
+      { 6, ME_DATA_ENTRY_MSB },
+      { 7, ME_MAINVOLUME },
+      { 8, ME_BALANCE },
+      { 10, ME_PAN },
+      { 11, ME_EXPRESSION },
+      { 32, ME_TONE_BANK_LSB },
+      { 37, ME_PORTAMENTO_TIME_LSB },
+      { 38, ME_DATA_ENTRY_LSB },
+      { 64, ME_SUSTAIN },
+      { 65, ME_PORTAMENTO },
+      { 66, ME_SOSTENUTO },
+      { 67, ME_SOFT_PEDAL },
+      { 68, ME_LEGATO_FOOTSWITCH },
+      { 69, ME_HOLD2 },
+      { 71, ME_HARMONIC_CONTENT },
+      { 72, ME_RELEASE_TIME },
+      { 73, ME_ATTACK_TIME },
+      { 74, ME_BRIGHTNESS },
+      { 84, ME_PORTAMENTO_CONTROL },
+      { 91, ME_REVERB_EFFECT },
+      { 92, ME_TREMOLO_EFFECT },
+      { 93, ME_CHORUS_EFFECT },
+      { 94, ME_CELESTE_EFFECT },
+      { 95, ME_PHASER_EFFECT },
+      { 96, ME_RPN_INC },
+      { 97, ME_RPN_DEC },
+      { 98, ME_NRPN_LSB },
+      { 99, ME_NRPN_MSB },
+      { 100, ME_RPN_LSB },
+      { 101, ME_RPN_MSB },
+      { 120, ME_ALL_SOUNDS_OFF },
+      { 121, ME_RESET_CONTROLLERS },
+      { 123, ME_ALL_NOTES_OFF },
+      { 126, ME_MONO },
+      { 127, ME_POLY },
+};
+
 int convert_midi_control_change(int chn, int type, int val, MidiEvent *ev_ret)
 {
-    switch(type)
-    {
-      case   0: type = ME_TONE_BANK_MSB; break;
-      case   1: type = ME_MODULATION_WHEEL; break;
-      case   2: type = ME_BREATH; break;
-      case   4: type = ME_FOOT; break;
-      case   5: type = ME_PORTAMENTO_TIME_MSB; break;
-      case   6: type = ME_DATA_ENTRY_MSB; break;
-      case   7: type = ME_MAINVOLUME; break;
-      case   8: type = ME_BALANCE; break;
-      case  10: type = ME_PAN; break;
-      case  11: type = ME_EXPRESSION; break;
-      case  32: type = ME_TONE_BANK_LSB; break;
-      case  37: type = ME_PORTAMENTO_TIME_LSB; break;
-      case  38: type = ME_DATA_ENTRY_LSB; break;
-      case  64: type = ME_SUSTAIN; break;
-      case  65: type = ME_PORTAMENTO; break;
-      case  66: type = ME_SOSTENUTO; break;
-      case  67: type = ME_SOFT_PEDAL; break;
-      case  68: type = ME_LEGATO_FOOTSWITCH; break;
-      case  69: type = ME_HOLD2; break;
-      case  71: type = ME_HARMONIC_CONTENT; break;
-      case  72: type = ME_RELEASE_TIME; break;
-      case  73: type = ME_ATTACK_TIME; break;
-      case  74: type = ME_BRIGHTNESS; break;
-      case  84: type = ME_PORTAMENTO_CONTROL; break;
-      case  91: type = ME_REVERB_EFFECT; break;
-      case  92: type = ME_TREMOLO_EFFECT; break;
-      case  93: type = ME_CHORUS_EFFECT; break;
-      case  94: type = ME_CELESTE_EFFECT; break;
-      case  95: type = ME_PHASER_EFFECT; break;
-      case  96: type = ME_RPN_INC; break;
-      case  97: type = ME_RPN_DEC; break;
-      case  98: type = ME_NRPN_LSB; break;
-      case  99: type = ME_NRPN_MSB; break;
-      case 100: type = ME_RPN_LSB; break;
-      case 101: type = ME_RPN_MSB; break;
-      case 120: type = ME_ALL_SOUNDS_OFF; break;
-      case 121: type = ME_RESET_CONTROLLERS; break;
-      case 123: type = ME_ALL_NOTES_OFF; break;
-      case 126: type = ME_MONO; break;
-      case 127: type = ME_POLY; break;
-      default: type = -1; break;
+    int i;
+    for (i = 0; i < ARRAY_SIZE(ctl_chg_list); i++) {
+	if (ctl_chg_list[i].mtype == type) {
+	    type = ctl_chg_list[i].ttype;
+	    break;
+	}
     }
+    if (i >= ARRAY_SIZE(ctl_chg_list))
+	type = -1;
 
     if(type != -1)
     {
@@ -581,6 +599,19 @@ int convert_midi_control_change(int chn, int type, int val, MidiEvent *ev_ret)
 	return 1;
     }
     return 0;
+}
+
+int unconvert_midi_control_change(MidiEvent *ev)
+{
+    int i;
+    for (i = 0; i < ARRAY_SIZE(ctl_chg_list); i++) {
+	if (ctl_chg_list[i].ttype == ev->type)
+	    break;
+    }
+    if (i >= ARRAY_SIZE(ctl_chg_list))
+	return -1;
+
+    return ctl_chg_list[i].mtype;
 }
 
 static int block_to_part(int block, int port)
@@ -615,7 +646,7 @@ static int set_xg_reverb_type(int msb, int lsb)
 		break;
 	    case 0x03:
 		type = 3;			/* Stage 1 -> Hall 1 */
-                break;
+		break;
 	    case 0x04:
 		type = 5;			/* Plate */
 		break;
@@ -2810,7 +2841,7 @@ int parse_sysex_event_multi(uint8 *val, int32 len, MidiEvent *evm)
 							0, val[7], (val[0] == 0x7f));
 					num_events++;
 				} else {
-					for (i = j = 0; i < MAX_CHANNELS; i++)
+					for (i = j = 0; i < 32; i++)
 						if (channel_tt & 1 << i) {
 							SETMIDIEVENT(evm[j], 0, ME_TEMPER_TYPE,
 									MERGE_CHANNEL_PORT(i),
@@ -2962,6 +2993,18 @@ int parse_sysex_event(uint8 *val, int32 len, MidiEvent *ev)
 	    return 1;
 	}
 
+	if(addr == 0x400000) /* Master Tune, not for SMF */
+	{
+		uint16 tune = ((body[1] & 0xF) << 8) | ((body[2] & 0xF) << 4) | (body[3] & 0xF);
+		
+		if (tune < 0x18)
+			tune = 0x18;
+		else if (tune > 0x7E8)
+			tune = 0x7E8;
+		SETMIDIEVENT(*ev, 0, ME_MASTER_TUNING, 0, tune & 0xFF, (tune >> 8) & 0x7F);
+		return 1;
+	}
+
 	if(addr == 0x400004) /* Master Volume */
 	{
 	    vol = gs_convert_master_vol(*body);
@@ -3096,19 +3139,63 @@ int parse_sysex_event(uint8 *val, int32 len, MidiEvent *ev)
 	return 0;
     }
     
+    /* val[1] can have values other than 0x10 for the XG ON event, which
+     * work on real XG hardware.  I have several midi that use 0x1f instead
+     * of 0x10.  playmidi.h lists 0x10 - 0x13 as MU50/80/90/100.  I don't
+     * know what real world Device Number 0x1f would correspond to, but the
+     * XG spec says the entire 0x1n range is valid, and 0x1f works on real
+     * hardware, so I have modified the check below to accept the entire
+     * 0x1n range.
+     *
+     * I think there are/were some hacks somewhere in playmidi.c (?) to work
+     * around non- 0x10 values, but this fixes the root of the problem, which
+     * allows the server mode to handle XG initialization properly as well.
+     */
     if(len >= 8 &&
        val[0] == 0x43 &&
-       val[1] == 0x10 &&
-       val[2] == 0x4C &&
-       val[3] == 0x00 &&
-       val[4] == 0x00 &&
-       val[5] == 0x7E)
+       (val[1] >= 0x10 && val[1] <= 0x1f) &&
+       val[2] == 0x4C)
     {
-	/* XG SYSTEM ON */
-	SETMIDIEVENT(*ev, 0, ME_RESET, 0, XG_SYSTEM_MODE, SYSEX_TAG);
-	return 1;
+	int addr = (val[3] << 16) | (val[4] << 8) | val[5];
+	
+	if (addr == 0x00007E)	/* XG SYSTEM ON */
+	{
+		SETMIDIEVENT(*ev, 0, ME_RESET, 0, XG_SYSTEM_MODE, SYSEX_TAG);
+		return 1;
+	}
+	else if (addr == 0x000000 && len >= 12)	/* XG Master Tune */
+	{
+		uint16 tune = ((val[7] & 0xF) << 8) | ((val[8] & 0xF) << 4) | (val[9] & 0xF);
+		
+		if (tune > 0x7FF)
+			tune = 0x7FF;
+		SETMIDIEVENT(*ev, 0, ME_MASTER_TUNING, 0, tune & 0xFF, (tune >> 8) & 0x7F);
+		return 1;
+	}
     }
 
+    if (len >= 7 && val[0] == 0x7F && val[1] == 0x7F)
+    {
+	if (val[2] == 0x04 && val[3] == 0x03)	/* GM2 Master Fine Tune */
+	{
+		uint16 tune = (val[4] & 0x7F) | (val[5] << 7) | 0x4000;
+		
+		SETMIDIEVENT(*ev, 0, ME_MASTER_TUNING, 0, tune & 0xFF, (tune >> 8) & 0x7F);
+		return 1;
+	}
+	if (val[2] == 0x04 && val[3] == 0x04)	/* GM2 Master Coarse Tune */
+	{
+		uint8 tune = val[5];
+		
+		if (tune < 0x28)
+			tune = 0x28;
+		else if (tune > 0x58)
+			tune = 0x58;
+		SETMIDIEVENT(*ev, 0, ME_MASTER_TUNING, 0, tune, 0x80);
+		return 1;
+	}
+    }
+    
 	/* Non-RealTime / RealTime Universal SysEx messages
 	 * 0 0x7e(Non-RealTime) / 0x7f(RealTime)
 	 * 1 SysEx device ID.  Could be from 0x00 to 0x7f.
@@ -3270,7 +3357,7 @@ static void smf_time_signature(int32 at, struct timidity_file *tf, int len)
     c = tf_getc(tf);
     b = tf_getc(tf);
 
-    if(n == 0 || d == 0)
+    if(n == 0 || (uint8) d == 0)
     {
 	ctl->cmsg(CMSG_WARNING, VERB_VERBOSE, "Invalid time signature");
 	return;
@@ -3368,6 +3455,7 @@ static int read_smf_track(struct timidity_file *tf, int trackno, int rewindp)
     int me, type, a, b, c;
     int i;
     int32 smf_at_time;
+    int note_seen = (! opt_preserve_silence);
 
     smf_at_time = readmidi_set_track(trackno, rewindp);
 
@@ -3671,6 +3759,12 @@ static int read_smf_track(struct timidity_file *tf, int trackno, int rewindp)
 		b = tf_getc(tf) & 0x7F;
 		if(b)
 		{
+		     if (! note_seen && smf_at_time > 0)
+		     {
+			MIDIEVENT(0, ME_NOTEON, lastchan, a, 0);
+			MIDIEVENT(0, ME_NOTEOFF, lastchan, a, 0);
+		     }
+		     note_seen = 1;
 		    MIDIEVENT(smf_at_time, ME_NOTEON, lastchan, a,b);
 		}
 		else /* b == 0 means Note Off */
@@ -3792,15 +3886,17 @@ static void move_channels(int *chidx)
 				if (chidx[ch = e->event.channel] != -1)
 					ch = e->event.channel = chidx[ch];
 				else {	/* -1 */
-					newch = ch % REDUCE_CHANNELS;
-					while (newch < ch && newch < MAX_CHANNELS) {
-						if (chidx[newch] == -1) {
-							ctl->cmsg(CMSG_INFO, VERB_VERBOSE,
-									"channel %d => %d", ch, newch);
-							ch = e->event.channel = chidx[ch] = newch;
-							break;
+					if (ch >= MAX_CHANNELS) {
+						newch = ch % REDUCE_CHANNELS;
+						while (newch < ch && newch < MAX_CHANNELS) {
+							if (chidx[newch] == -1) {
+								ctl->cmsg(CMSG_INFO, VERB_VERBOSE,
+										"channel %d => %d", ch, newch);
+								ch = e->event.channel = chidx[ch] = newch;
+								break;
+							}
+							newch += REDUCE_CHANNELS;
 						}
-						newch += REDUCE_CHANNELS;
 					}
 					if (chidx[ch] == -1) {
 						if (ch < MAX_CHANNELS)
@@ -4033,117 +4129,114 @@ static MidiEvent *groom_list(int32 divisions, int32 *eventsp, int32 *samplesp)
 	    }
 	    break;
 
-	  case ME_PROGRAM:
-	    if(ISDRUMCHANNEL(ch))
-		newbank = current_program[ch];
-	    else
-		newbank = current_set[ch];
-	    newprog = meep->event.a;
-	    switch(play_system_mode)
-	    {
-	      case GS_SYSTEM_MODE:
-		switch(bank_lsb[ch])
-		{
-		  case 0:	/* No change */
-		    break;
-		  case 1:
-		    ctl->cmsg(CMSG_INFO, VERB_DEBUG,
-			      "(GS ch=%d SC-55 MAP)", ch);
-		    mapID[ch] = (!ISDRUMCHANNEL(ch) ? SC_55_TONE_MAP
-				 : SC_55_DRUM_MAP);
-		    break;
-		  case 2:
-		    ctl->cmsg(CMSG_INFO, VERB_DEBUG,
-			      "(GS ch=%d SC-88 MAP)", ch);
-		    mapID[ch] = (!ISDRUMCHANNEL(ch) ? SC_88_TONE_MAP
-				 : SC_88_DRUM_MAP);
-		    break;
-		  case 3:
-		    ctl->cmsg(CMSG_INFO, VERB_DEBUG,
-			      "(GS ch=%d SC-88Pro MAP)", ch);
-		    mapID[ch] = (!ISDRUMCHANNEL(ch) ? SC_88PRO_TONE_MAP
-				 : SC_88PRO_DRUM_MAP);
-		    break;
-		  case 4:
-		    ctl->cmsg(CMSG_INFO, VERB_DEBUG,
-			      "(GS ch=%d SC-8820/SC-8850 MAP)", ch);
-		    mapID[ch] = (!ISDRUMCHANNEL(ch) ? SC_8850_TONE_MAP
-				 : SC_8850_DRUM_MAP);
-		    break;
-		  default:
-		    ctl->cmsg(CMSG_INFO, VERB_DEBUG,
-			      "(GS: ch=%d Strange bank LSB %d)",
-			      ch, bank_lsb[ch]);
-		    break;
-		}
-		newbank = bank_msb[ch];
-		break;
-
-	      case XG_SYSTEM_MODE: /* XG */
-		switch(bank_msb[ch])
-		{
-		  case 0: /* Normal */
-		    if(ch == 9  && bank_lsb[ch] == 127 && mapID[ch] == XG_DRUM_MAP) {
-		      /* FIXME: Why this part is drum?  Is this correct? */
-		      ctl->cmsg(CMSG_WARNING, VERB_NORMAL,
-				"Warning: XG bank 0/127 is found. It may be not correctly played.");
-		      ;
-		    } else {
-		      ctl->cmsg(CMSG_INFO, VERB_DEBUG, "(XG ch=%d Normal voice)",
-				ch);
-		      midi_drumpart_change(ch, 0);
-		      mapID[ch] = XG_NORMAL_MAP;
-		    }
-		    break;
-		  case 64: /* SFX voice */
-		    ctl->cmsg(CMSG_INFO, VERB_DEBUG, "(XG ch=%d SFX voice)",
-			      ch);
-		    midi_drumpart_change(ch, 0);
-		    mapID[ch] = XG_SFX64_MAP;
-		    break;
-		  case 126: /* SFX kit */
-		    ctl->cmsg(CMSG_INFO, VERB_DEBUG, "(XG ch=%d SFX kit)", ch);
-		    midi_drumpart_change(ch, 1);
-		    mapID[ch] = XG_SFX126_MAP;
-		    break;
-		  case 127: /* Drum kit */
-		    ctl->cmsg(CMSG_INFO, VERB_DEBUG,
-			      "(XG ch=%d Drum kit)", ch);
-		    midi_drumpart_change(ch, 1);
-		    mapID[ch] = XG_DRUM_MAP;
-		    break;
-		  default:
-		    ctl->cmsg(CMSG_INFO, VERB_DEBUG,
-			      "(XG: ch=%d Strange bank MSB %d)",
-			      ch, bank_msb[ch]);
-		    break;
-		}
-		newbank = bank_lsb[ch];
-		break;
-
-	      case GM2_SYSTEM_MODE:
-		ctl->cmsg(CMSG_INFO, VERB_DEBUG, "(GM2 ch=%d)", ch);
-		mapID[ch] = (!ISDRUMCHANNEL(ch) ? GM2_TONE_MAP : GM2_DRUM_MAP);
-		newbank = bank_lsb[ch];
-		break;
-
-	      default:
-		newbank = bank_msb[ch];
-		break;
-	    }
-
-	    if(ISDRUMCHANNEL(ch))
-		current_set[ch] = newprog;
-	    else
-	    {
-		if(special_tonebank >= 0)
-		    newbank = special_tonebank;
-		if(current_program[ch] == SPECIAL_PROGRAM)
-		    skip_this_event = 1;
-		current_set[ch] = newbank;
-	    }
-	    current_program[ch] = newprog;
-	    break;
+			case ME_PROGRAM:
+				if (ISDRUMCHANNEL(ch))
+					newbank = current_program[ch];
+				else
+					newbank = current_set[ch];
+				newprog = meep->event.a;
+				switch (play_system_mode) {
+				case GS_SYSTEM_MODE:	/* GS */
+					switch (bank_lsb[ch]) {
+					case 0:		/* No change */
+						break;
+					case 1:
+						ctl->cmsg(CMSG_INFO, VERB_DEBUG,
+								"(GS ch=%d SC-55 MAP)", ch);
+						mapID[ch] = (ISDRUMCHANNEL(ch)) ? SC_55_DRUM_MAP
+								: SC_55_TONE_MAP;
+						break;
+					case 2:
+						ctl->cmsg(CMSG_INFO, VERB_DEBUG,
+								"(GS ch=%d SC-88 MAP)", ch);
+						mapID[ch] = (ISDRUMCHANNEL(ch)) ? SC_88_DRUM_MAP
+								: SC_88_TONE_MAP;
+						break;
+					case 3:
+						ctl->cmsg(CMSG_INFO, VERB_DEBUG,
+								"(GS ch=%d SC-88Pro MAP)", ch);
+						mapID[ch] = (ISDRUMCHANNEL(ch)) ? SC_88PRO_DRUM_MAP
+								: SC_88PRO_TONE_MAP;
+						break;
+					case 4:
+						ctl->cmsg(CMSG_INFO, VERB_DEBUG,
+								"(GS ch=%d SC-8820/SC-8850 MAP)", ch);
+						mapID[ch] = (ISDRUMCHANNEL(ch)) ? SC_8850_DRUM_MAP
+								: SC_8850_TONE_MAP;
+						break;
+					default:
+						ctl->cmsg(CMSG_INFO, VERB_DEBUG,
+								"(GS: ch=%d Strange bank LSB %d)",
+								ch, bank_lsb[ch]);
+						break;
+					}
+					newbank = bank_msb[ch];
+					break;
+				case XG_SYSTEM_MODE:	/* XG */
+					switch (bank_msb[ch]) {
+					case 0:		/* Normal */
+						if (ch == 9 && bank_lsb[ch] == 127
+								&& mapID[ch] == XG_DRUM_MAP)
+							/* FIXME: Why this part is drum?  Is this correct? */
+							ctl->cmsg(CMSG_WARNING, VERB_NORMAL,
+									"Warning: XG bank 0/127 is found. "
+									"It may be not correctly played.");
+						else {
+							ctl->cmsg(CMSG_INFO, VERB_DEBUG,
+									"(XG ch=%d Normal voice)", ch);
+							midi_drumpart_change(ch, 0);
+							mapID[ch] = XG_NORMAL_MAP;
+						}
+						break;
+					case 64:	/* SFX voice */
+						ctl->cmsg(CMSG_INFO, VERB_DEBUG,
+								"(XG ch=%d SFX voice)", ch);
+						midi_drumpart_change(ch, 0);
+						mapID[ch] = XG_SFX64_MAP;
+						break;
+					case 126:	/* SFX kit */
+						ctl->cmsg(CMSG_INFO, VERB_DEBUG,
+								"(XG ch=%d SFX kit)", ch);
+						midi_drumpart_change(ch, 1);
+						mapID[ch] = XG_SFX126_MAP;
+						break;
+					case 127:	/* Drum kit */
+						ctl->cmsg(CMSG_INFO, VERB_DEBUG,
+								"(XG ch=%d Drum kit)", ch);
+						midi_drumpart_change(ch, 1);
+						mapID[ch] = XG_DRUM_MAP;
+						break;
+					default:
+						ctl->cmsg(CMSG_INFO, VERB_DEBUG,
+								"(XG: ch=%d Strange bank MSB %d)",
+								ch, bank_msb[ch]);
+						break;
+					}
+					newbank = bank_lsb[ch];
+					break;
+				case GM2_SYSTEM_MODE:	/* GM2 */
+					ctl->cmsg(CMSG_INFO, VERB_DEBUG, "(GM2 ch=%d)", ch);
+					if ((bank_msb[ch] & 0xfe) == 0x78)	/* 0x78/0x79 */
+						midi_drumpart_change(ch, bank_msb[ch] == 0x78);
+					mapID[ch] = (ISDRUMCHANNEL(ch)) ? GM2_DRUM_MAP
+							: GM2_TONE_MAP;
+					newbank = bank_lsb[ch];
+					break;
+				default:
+					newbank = bank_msb[ch];
+					break;
+				}
+				if (ISDRUMCHANNEL(ch))
+					current_set[ch] = newprog;
+				else {
+					if (special_tonebank >= 0)
+						newbank = special_tonebank;
+					if (current_program[ch] == SPECIAL_PROGRAM)
+						skip_this_event = 1;
+					current_set[ch] = newbank;
+				}
+				current_program[ch] = newprog;
+				break;
 
 	  case ME_NOTEON:
 	    if(counting_time)
@@ -4254,6 +4347,11 @@ static MidiEvent *groom_list(int32 divisions, int32 *eventsp, int32 *samplesp)
 	    if(counting_time == 2)
 		skip_this_event = 1;
 	    break;
+
+	case ME_CUEPOINT:
+		if (counting_time == 2)
+			skip_this_event = 1;
+		break;
         }
 
 	/* Recompute time in samples*/
@@ -4349,6 +4447,9 @@ static int read_smf_file(struct timidity_file *tf)
     else
 	divisions = (int32)divisions_tmp;
 
+    if(play_mode->flag & PF_MIDI_EVENT)
+	play_mode->acntl(PM_REQ_DIVISIONS, &divisions);
+
     if(len > 6)
     {
 	ctl->cmsg(CMSG_WARNING, VERB_NORMAL,
@@ -4414,6 +4515,7 @@ static int read_smf_file(struct timidity_file *tf)
 void readmidi_read_init(void)
 {
     int i;
+	static int first = 1;
 
 	/* initialize effect status */
 	for (i = 0; i < MAX_CHANNELS; i++)
@@ -4450,12 +4552,16 @@ void readmidi_read_init(void)
 	string_event_table = NULL;
 	string_event_table_size = 0;
     }
+	if (first != 1)
+		if (string_event_strtab.nstring > 0)
+			delete_string_table(&string_event_strtab);
     init_string_table(&string_event_strtab);
     karaoke_format = 0;
 
     for(i = 0; i < 256; i++)
 	default_channel_program[i] = -1;
     readmidi_wrd_mode = WRD_TRACE_NOTHING;
+	first = 0;
 }
 
 static void insert_note_steps(void)
@@ -4500,6 +4606,122 @@ static void insert_note_steps(void)
 			meas++, beat = 0;
 		at += current_file_info->divisions * 4 / denom;
 	}
+}
+
+static int32 compute_smf_at_time(const int32, int32 *);
+static int32 compute_smf_at_time2(const Measure, int32 *);
+
+static void insert_cuepoints(void)
+{
+	TimeSegment *sp;
+	int32 at, st, t;
+	uint8 a0, b0, a1, b1;
+	
+	for (sp = time_segments; sp != NULL; sp = sp->next) {
+		if (sp->type == 0) {
+			if (sp->prev == NULL && sp->begin.s != 0) {
+				t = sp->begin.s * play_mode->rate;
+				a0 = t >> 24, b0 = t >> 16, a1 = t >> 8, b1 = t;
+				MIDIEVENT(0, ME_NOTEON, 0, 0, 0);
+				MIDIEVENT(0, ME_CUEPOINT, 0, a0, b0);
+				MIDIEVENT(0, ME_CUEPOINT, 1, a1, b1);
+			}
+			if (sp->next != NULL) {
+				at = compute_smf_at_time(sp->end.s * play_mode->rate, &st);
+				if (sp->next->type == 0)
+					t = sp->next->begin.s * play_mode->rate - st;
+				else
+					compute_smf_at_time2(sp->next->begin.m, &t), t -= st;
+				a0 = t >> 24, b0 = t >> 16, a1 = t >> 8, b1 = t;
+				MIDIEVENT(at, ME_CUEPOINT, 0, a0, b0);
+				MIDIEVENT(at, ME_CUEPOINT, 1, a1, b1);
+			} else if (sp->end.s != -1) {
+				at = compute_smf_at_time(sp->end.s * play_mode->rate, &st);
+				t = 0x7fffffff;		/* stopper */
+				a0 = t >> 24, b0 = t >> 16, a1 = t >> 8, b1 = t;
+				MIDIEVENT(at, ME_CUEPOINT, 0, a0, b0);
+				MIDIEVENT(at, ME_CUEPOINT, 1, a1, b1);
+			}
+		} else {
+			if (sp->prev == NULL
+					&& (sp->begin.m.meas != 1 || sp->begin.m.beat != 1)) {
+				compute_smf_at_time2(sp->begin.m, &t);
+				a0 = t >> 24, b0 = t >> 16, a1 = t >> 8, b1 = t;
+				MIDIEVENT(0, ME_NOTEON, 0, 0, 0);
+				MIDIEVENT(0, ME_CUEPOINT, 0, a0, b0);
+				MIDIEVENT(0, ME_CUEPOINT, 1, a1, b1);
+			}
+			if (sp->next != NULL) {
+				at = compute_smf_at_time2(sp->end.m, &st);
+				if (sp->next->type == 0)
+					t = sp->next->begin.s * play_mode->rate - st;
+				else
+					compute_smf_at_time2(sp->next->begin.m, &t), t -= st;
+				a0 = t >> 24, b0 = t >> 16, a1 = t >> 8, b1 = t;
+				MIDIEVENT(at, ME_CUEPOINT, 0, a0, b0);
+				MIDIEVENT(at, ME_CUEPOINT, 1, a1, b1);
+			} else if (sp->end.m.meas != -1 || sp->end.m.beat != -1) {
+				at = compute_smf_at_time2(sp->end.m, &st);
+				t = 0x7fffffff;		/* stopper */
+				a0 = t >> 24, b0 = t >> 16, a1 = t >> 8, b1 = t;
+				MIDIEVENT(at, ME_CUEPOINT, 0, a0, b0);
+				MIDIEVENT(at, ME_CUEPOINT, 1, a1, b1);
+			}
+		}
+	}
+}
+
+static int32 compute_smf_at_time(const int32 sample, int32 *sample_adj)
+{
+	MidiEventList *e;
+	int32 st = 0, tempo = 500000, prev_time = 0;
+	int i;
+	
+	for (i = 0, e = evlist; i < event_count; i++, e = e->next) {
+		st += (double) tempo * play_mode->rate / 1000000
+				/ current_file_info->divisions
+				* (e->event.time - prev_time) + 0.5;
+		if (st >= sample && e->event.type == ME_NOTE_STEP) {
+			*sample_adj = st;
+			return e->event.time;
+		}
+		if (e->event.type == ME_TEMPO)
+		    tempo = e->event.a * 65536 + e->event.b * 256 + e->event.channel;
+		prev_time = e->event.time;
+	}
+	return -1;
+}
+
+static int32 compute_smf_at_time2(const Measure m, int32 *sample)
+{
+	MidiEventList *e;
+	int32 st = 0, tempo = 500000, prev_time = 0;
+	int i;
+	
+	for (i = 0, e = evlist; i < event_count; i++, e = e->next) {
+		st += (double) tempo * play_mode->rate / 1000000
+				/ current_file_info->divisions
+				* (e->event.time - prev_time) + 0.5;
+		if (e->event.type == ME_NOTE_STEP
+				&& ((e->event.a + ((e->event.b & 0x0f) << 8)) * 16
+				+ (e->event.b >> 4)) >= m.meas * 16 + m.beat) {
+			*sample = st;
+			return e->event.time;
+		}
+		if (e->event.type == ME_TEMPO)
+		    tempo = e->event.a * 65536 + e->event.b * 256 + e->event.channel;
+		prev_time = e->event.time;
+	}
+	return -1;
+}
+
+void free_time_segments(void)
+{
+	TimeSegment *sp, *next;
+	
+	for (sp = time_segments; sp != NULL; sp = next)
+		next = sp->next, free(sp);
+	time_segments = NULL;
 }
 
 MidiEvent *read_midi_file(struct timidity_file *tf, int32 *count, int32 *sp,
@@ -4661,6 +4883,7 @@ MidiEvent *read_midi_file(struct timidity_file *tf, int32 *count, int32 *sp,
 
   grooming:
     insert_note_steps();
+    insert_cuepoints();
     ev = groom_list(current_file_info->divisions, count, sp);
     if(ev == NULL)
     {
@@ -5259,7 +5482,7 @@ char *get_midi_title(char *filename)
 		    }
 		    if(karaoke_format != -1)
 		    {
-			if(trk == 1 && strncmp(si, "@KMIDI", 6) == 0)
+			if(trk == 1 && strncmp(si, "@K", 2) == 0)
 			    karaoke_format = 1;
 			else if(karaoke_format == 1 && trk == 2)
 			    karaoke_format = 2;
@@ -5371,8 +5594,9 @@ int midi_file_save_as(char *in_name, char *out_name)
 	return -1;
     }
 
-    while((n = tf_read(buff, 1, sizeof(buff), tf)) > 0)
-	fwrite(buff, 1, n, ofp);
+    while((n = tf_read(buff, 1, sizeof(buff), tf)) > 0) {
+	size_t dummy = fwrite(buff, 1, n, ofp); ++dummy;
+	}
     ctl->cmsg(CMSG_INFO, VERB_NORMAL, "Save as %s...Done", out_name);
 
     fclose(ofp);
@@ -5417,12 +5641,12 @@ void recompute_delay_status_gs(void)
 	p->time_center = delay_time_center_table[p->time_c > 0x73 ? 0x73 : p->time_c];
 	p->time_ratio_left = (double)p->time_l / 24;
 	p->time_ratio_right = (double)p->time_r / 24;
-	p->sample_c = p->time_center * play_mode->rate / 1000.0f;
-	p->sample_l = p->sample_c * p->time_ratio_left;
-	p->sample_r = p->sample_c * p->time_ratio_right;
-	p->level_ratio_c = (double)p->level * (double)p->level_center / (127.0f * 127.0f);
-	p->level_ratio_l = (double)p->level * (double)p->level_left / (127.0f * 127.0f);
-	p->level_ratio_r = (double)p->level * (double)p->level_right / (127.0f * 127.0f);
+	p->sample[0] = p->time_center * play_mode->rate / 1000.0f;
+	p->sample[1] = p->sample[0] * p->time_ratio_left;
+	p->sample[2] = p->sample[0] * p->time_ratio_right;
+	p->level_ratio[0] = p->level * p->level_center / (127.0f * 127.0f);
+	p->level_ratio[1] = p->level * p->level_left / (127.0f * 127.0f);
+	p->level_ratio[2] = p->level * p->level_right / (127.0f * 127.0f);
 	p->feedback_ratio = (double)(p->feedback - 64) * (0.763f * 2.0f / 100.0f);
 	p->send_reverb_ratio = (double)p->send_reverb * (0.787f / 100.0f);
 
@@ -5696,7 +5920,7 @@ void recompute_multi_eq_xg(void)
 /*! convert GS user drumset assign groups to internal "alternate assign". */
 void recompute_userdrum_altassign(int bank, int group)
 {
-	int number = 0;
+	int number = 0, i;
 	char *params[131], param[10];
 	ToneBank *bk;
 	UserDrumset *p;
@@ -5713,6 +5937,8 @@ void recompute_userdrum_altassign(int bank, int group)
 	alloc_instrument_bank(1, bank);
 	bk = drumset[bank];
 	bk->alt = add_altassign_string(bk->alt, params, number);
+	for (i = number - 1; i >= 0; i--)
+		free(params[i]);
 }
 
 /*! initialize GS user drumset. */
@@ -5732,22 +5958,35 @@ void init_userdrum()
 }
 
 /*! recompute GS user drumset. */
-void recompute_userdrum(int bank, int prog)
+Instrument *recompute_userdrum(int bank, int prog)
 {
 	UserDrumset *p;
+	Instrument *ip = NULL;
 
 	p = get_userdrum(bank, prog);
 
 	free_tone_bank_element(&drumset[bank]->tone[prog]);
 	if(drumset[p->source_prog]) {
-		if(drumset[p->source_prog]->tone[p->source_note].name) {
-			copy_tone_bank_element(&drumset[bank]->tone[prog], &drumset[p->source_prog]->tone[p->source_note]);
+		ToneBankElement *source_tone = &drumset[p->source_prog]->tone[p->source_note];
+
+		if(source_tone->name == NULL /* NULL if "soundfont" directive is used */
+			  && source_tone->instrument == NULL) {
+			if((ip = load_instrument(1, p->source_prog, p->source_note)) == NULL) {
+				ip = MAGIC_ERROR_INSTRUMENT;
+			}
+			source_tone->instrument = ip;
+		}
+		if(source_tone->name) {
+			copy_tone_bank_element(&drumset[bank]->tone[prog], source_tone);
 			ctl->cmsg(CMSG_INFO,VERB_NOISY,"User Drumset (%d %d -> %d %d)", p->source_prog, p->source_note, bank, prog);
 		} else if(drumset[0]->tone[p->source_note].name) {
 			copy_tone_bank_element(&drumset[bank]->tone[prog], &drumset[0]->tone[p->source_note]);
 			ctl->cmsg(CMSG_INFO,VERB_NOISY,"User Drumset (%d %d -> %d %d)", 0, p->source_note, bank, prog);
+		} else {
+			ctl->cmsg(CMSG_WARNING, VERB_NORMAL, "Referring user drum set %d, note %d not found - this instrument will not be heard as expected", bank, prog);
 		}
 	}
+	return ip;
 }
 
 /*! get pointer to requested GS user drumset.
@@ -6176,3 +6415,21 @@ void free_midi_file_data()
 		free(string_event_table);
 	}
 }
+
+void free_readmidi(void)
+{
+	reuse_mblock(&mempool);
+	free_time_segments();
+	free_all_midi_file_info();
+	free_userdrum();
+	free_userinst();
+	if (string_event_strtab.nstring > 0)
+		delete_string_table(&string_event_strtab);
+	if (string_event_table != NULL) {
+		free(string_event_table[0]);
+		free(string_event_table);
+		string_event_table = NULL;
+		string_event_table_size = 0;
+	}
+}
+

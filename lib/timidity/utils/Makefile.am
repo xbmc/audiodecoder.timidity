@@ -50,6 +50,7 @@ EXTRA_libutils_a_SOURCES = \
 	support.c \
 	net.c \
 	net.h \
+	getaddrinfo.c \
 	mac_util.c \
 	mac_util.h \
 	mac_readdir.c \
@@ -62,7 +63,7 @@ GETOPT_OBJS = getopt.$(OBJEXT)
 endif
 
 if ENABLE_NETWORK
-NET_OBJS = net.$(OBJEXT)
+NET_OBJS = net.$(OBJEXT) getaddrinfo.$(OBJEXT)
 endif
 
 if ENABLE_SOUND_SPEC
@@ -104,9 +105,23 @@ if WATCOM_C
 	done
 	if test -f utils.lib ; then touch $@ ; fi
 else
+if DMC
+	rm -f libutils.a
+	rm -f utils.lib
+	start lib -c utils.lib  $(libutils_a_OBJECTS) $(libutils_a_LIBADD)
+	if test -f utils.lib ; then touch $@ ; fi
+else
+if POCC
+	rm -f libutils.a
+	rm -f utils.lib
+	polib -OUT:utils.lib  $(libutils_a_OBJECTS) $(libutils_a_LIBADD)
+	if test -f utils.lib ; then touch $@ ; fi
+else
 	-rm -f libutils.a
 	$(libutils_a_AR) libutils.a $(libutils_a_OBJECTS) $(libutils_a_LIBADD)
 	$(RANLIB) libutils.a
+endif
+endif
 endif
 endif
 endif

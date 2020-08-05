@@ -141,6 +141,8 @@ typedef struct {
 #define MAGIC_ERROR_INSTRUMENT ((Instrument *)(-2))
 #define IS_MAGIC_INSTRUMENT(ip) ((ip) == MAGIC_LOAD_INSTRUMENT || (ip) == MAGIC_ERROR_INSTRUMENT)
 
+#define DYNAMIC_INSTRUMENT_NAME ""
+
 typedef struct _AlternateAssign {
     /* 128 bit vector:
      * bits[(note >> 5) & 0x3] & (1 << (note & 0x1F))
@@ -198,6 +200,7 @@ extern int cutoff_allowed;
 #define SPECIAL_PROGRAM -1
 
 /* sndfont.c */
+extern int opt_sf_close_each_file;
 extern void add_soundfont(char *sf_file, int sf_order,
 			  int cutoff_allowed, int resonance_allowed,
 			  int amp);
@@ -211,7 +214,7 @@ extern int exclude_soundfont(int bank, int preset, int keynote);
 extern int order_soundfont(int bank, int preset, int keynote, int order);
 extern char *soundfont_preset_name(int bank, int preset, int keynote,
 				   char **sndfile);
-extern void free_soundfont_inst(void);
+extern void free_soundfonts(void);
 
 /* instrum.c */
 extern int load_missing_instruments(int *rc);

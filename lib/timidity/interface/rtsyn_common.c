@@ -18,7 +18,7 @@
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
     rtsyn_common.c
-        Copyright (c) 2003  Keishi Suenaga <s_keishi@mutt.freemail.ne.jp>
+        Copyright (c) 2003-2005  Keishi Suenaga <s_keishi@mutt.freemail.ne.jp>
 
     I referenced following sources.
         alsaseq_c.c - ALSA sequencer server interface
@@ -30,6 +30,10 @@
 #include "config.h"
 #endif /* HAVE_CONFIG_H */
 #include "interface.h"
+
+#ifdef __POCC__
+#include <sys/types.h>
+#endif //for off_t
 
 #include <stdio.h>
 
@@ -68,34 +72,30 @@
 
 #include "rtsyn.h"
 
+extern int32 current_sample;
+extern void reset_midi(int playing);
 
 //int seq_quit;
 
-int rtsyn_system_mode=DEFAULT_SYSTEM_MODE;
+int rtsyn_system_mode = DEFAULT_SYSTEM_MODE;
+double rtsyn_latency = RTSYN_LATENCY;   //ratency (sec)
+int32 rtsyn_start_sample;
+int rtsyn_sample_time_mode = 0;
 
-static int32 event_time_offset;
-static double starttime;
-double rtsyn_reachtime;
-static int time_advance;
+static int rtsyn_played = 0;
+static double rtsyn_start_time;
+static double last_event_time;
+static double last_calc_time;
 static int set_time_first=2;
+extern int volatile stream_max_compute;	// play_event() ‚Ì compute_data() ‚ÅŒvŽZ‚ð‹–‚·Å‘åŽžŠÔ
 
 //acitive sensing
 static int active_sensing_flag=0;
 static double active_sensing_time=0;
 
 //timer interrupt
-#ifdef USE_WINSYN_TIMER_I
-rtsyn_mutex_t timerMUTEX;
 
-#ifdef __W32__
-MMRESULT timerID;
-#else 
-pthread_t timer_thread;
-int thread_on_f=0;
-#endif
-
-#endif
-
+/*
 #define EX_RESET_NO 7
 static char sysex_resets[EX_RESET_NO][11]={
 		'\xf0','\x7e','\x7f','\x09','\x00','\xf7','\x00','\x00','\x00','\x00','\x00',
@@ -105,6 +105,7 @@ static char sysex_resets[EX_RESET_NO][11]={
 		'\xf0','\x41','\x10','\x42','\x12','\x00','\x00','\x7f','\x00','\x01','\xf7',
 		'\xf0','\x41','\x10','\x42','\x12','\x00','\x00','\x7f','\x01','\x00','\xf7',
 		'\xf0','\x43','\x10','\x4c','\x00','\x00','\x7E','\x00','\xf7','\x00','\x00' };
+*/
 /*
 #define EX_RESET_NO 9
 static char sysex_resets[EX_RESET_NO][11]={
@@ -120,8 +121,7 @@ static char sysex_resets[EX_RESET_NO][11]={
 	};
 */
 
-static void seq_set_time(MidiEvent *ev);
-
+void rtsyn_seq_set_time(MidiEvent *ev, double event_time);
 
 
 void rtsyn_gm_reset(){
@@ -173,6 +173,7 @@ void rtsyn_gm_modeset(){
 	ev.a=GM_SYSTEM_MODE;
 	rtsyn_play_event(&ev);
 	change_system_mode(rtsyn_system_mode);
+	reset_midi(1);
 }
 
 
@@ -185,6 +186,7 @@ void rtsyn_gs_modeset(){
 	ev.a=GS_SYSTEM_MODE;
 	rtsyn_play_event(&ev);
 	change_system_mode(rtsyn_system_mode);
+	reset_midi(1);
 }
 
 
@@ -197,6 +199,7 @@ void rtsyn_xg_modeset(){
 	ev.a=XG_SYSTEM_MODE;
 	rtsyn_play_event(&ev);
 	change_system_mode(rtsyn_system_mode);
+	reset_midi(1);
 }
 
 
@@ -209,170 +212,138 @@ void rtsyn_normal_modeset(){
 	ev.a=GS_SYSTEM_MODE;
 	rtsyn_play_event(&ev);
 	change_system_mode(rtsyn_system_mode);
+	reset_midi(1);
 }
 
-
-
-#ifdef USE_WINSYN_TIMER_I
-#ifdef __W32__
-VOID CALLBACK timercalc(UINT uTimerID, UINT uMsg, DWORD dwUser, DWORD dummy1, DWORD dummy2){
-	MidiEvent ev;
-	double time_div, currenttime;
-	
-	rtsyn_mutex_lock(timerMUTEX);
-	currenttime=get_current_calender_time();
-	time_div=currenttime-starttime;
-	if( time_div > 1.0/TICKTIME_HZ*2.0){
-		time_div= 1.0/TICKTIME_HZ-3/(play_mode->rate);
-	}
-	ev.time= ((double)current_sample
-			+ (play_mode->rate)*time_div+0.5);
-	starttime=currenttime;
-	ev.type = ME_NONE;
-	play_event(&ev);
-//	compute_data(tmdy_struct,(tmdy_struct->output->play_mode->rate)*time_div);
-	aq_fill_nonblocking();
-	rtsyn_reachtime=currenttime +  (double)(1.0f/TICKTIME_HZ);
-	rtsyn_mutex_unlock(timerMUTEX);
-	return;
+double rtsyn_set_latency(double latency){
+	if(latency < 1.0 / TICKTIME_HZ * 3.0) latency = 1.0 / TICKTIME_HZ * 4.0;
+	rtsyn_latency = latency;
+	return latency;
 }
-#else
-void *timercalc(void *arg){
- 	MidiEvent ev;
-	unsigned int slt;
-	double reachtime,delay;
-	delay=(double)(1.0/TICKTIME_HZ);
-	while(thread_on_f==1){		
-		rtsyn_mutex_lock(timerMUTEX);
-		reachtime=get_current_calender_time()+delay;
-		ev.type = ME_NONE;
-		seq_set_time(&ev);
-		play_event(&ev);
-		aq_fill_nonblocking();
-		rtsyn_mutex_unlock(timerMUTEX);
-		do{
-			sleep(0);
-		}while(get_current_calender_time()<reachtime);
-	}
-	return NULL;
-}
-#endif
-#endif
+
 void rtsyn_init(void){
 	int i,j;
+	MidiEvent ev;
 		/* set constants */
 	opt_realtime_playing = 1; /* Enable loading patch while playing */
 	allocate_cache_size = 0; /* Don't use pre-calclated samples */
 	auto_reduce_polyphony = 0;
-	current_keysig = (opt_init_keysig == 8) ? 0 : opt_init_keysig;
-	note_key_offset = key_adjust;
-	time_advance=play_mode->rate/TICKTIME_HZ*2;
-	if (!(play_mode->encoding & PE_MONO))
-		time_advance >>= 1;
-	if (play_mode->encoding & PE_24BIT)
-		time_advance /= 3;
-	else if (play_mode->encoding & PE_16BIT)
-		time_advance >>= 1;
-
+	opt_sf_close_each_file = 0;
+	
+	if(ctl->id_character != 'N')
+	  aq_set_soft_queue(rtsyn_latency*(double)1.01, 0.0);
 	i = current_keysig + ((current_keysig < 8) ? 7 : -9), j = 0;
 	while (i != 7)
 		i += (i < 7) ? 5 : -7, j++;
 	j += note_key_offset, j -= floor(j / 12.0) * 12;
 	current_freq_table = j;
 	
-#ifdef USE_WINSYN_TIMER_I
-
-	rtsyn_mutex_init(timerMUTEX);
-#ifdef __W32__
-	timeBeginPeriod(1);
-	{
-		DWORD data = 0;
-		UINT delay;
-		delay=(1000/TICKTIME_HZ);
-		 
-		
-		timerID = timeSetEvent( delay, 0, timercalc, data,
-			TIME_PERIODIC | TIME_CALLBACK_FUNCTION );
-        if( !timerID ){
-        	ctl->cmsg(  CMSG_ERROR, VERB_NORMAL,"Fail to setup Timer Interrupt (winsyn) \n");
-        }
-	}
-#else
-	thread_on_f=1;
-	if(0!=pthread_create(&timer_thread,NULL,timercalc,NULL)){
-        	ctl->cmsg(  CMSG_ERROR, VERB_NORMAL,"Fail to setup Timer Interrupt (winsyn) \n");
-	}
-#endif
-
-#endif
-	rtsyn_server_reset();
+	rtsyn_reset();
+	play_mode->open_output();
+	rtsyn_system_mode=DEFAULT_SYSTEM_MODE;
+	change_system_mode(rtsyn_system_mode);
+	reset_midi(0);
 }
 
 void rtsyn_close(void){
-#ifdef USE_WINSYN_TIMER_I
-#ifdef __W32__
-	timeKillEvent( timerID );
-	timeEndPeriod(1);
-#else
-	thread_on_f=0;
-	pthread_join(timer_thread, NULL);
-#endif
-	rtsyn_mutex_destroy(timerMUTEX);
-#endif 
+	rtsyn_stop_playing();
+	free_instruments(0);
+	playmidi_stream_free();
+	free_global_mblock();
 }
 
-void rtsyn_play_event(MidiEvent *ev)
-{
-  int gch;
-  int32 cet;
-#ifdef USE_WINSYN_TIMER_I
-	rtsyn_mutex_lock(timerMUTEX);
-#endif 
+rtsyn_play_event_sample(MidiEvent *ev, int32 event_sample_time){
+	ev->time=event_sample_time;
+	play_event(ev);
+	if(rtsyn_sample_time_mode != 1)
+	  aq_fill_nonblocking();
+}
 
-	gch = GLOBAL_CHANNEL_EVENT_TYPE(ev->type);
-	if(gch || !IS_SET_CHANNELMASK(quietchannels, ev->channel) ){
-//    if ( !seq_quit ) {
-			ev->time=0;
-			play_event(ev);
+void rtsyn_play_event_time(MidiEvent *ev, double event_time){
+	int gch;
+	double current_event_time, buf_time;
+	int32 max_compute;
+	MidiEvent nev;
+
+		max_compute = rtsyn_latency * 1000.0;
+		max_compute = (stream_max_compute > max_compute) ? stream_max_compute : max_compute;
+		if ( (event_time - last_event_time) > (double)max_compute/1000.0){
+				kill_all_voices();
+				current_sample = (double)(play_mode->rate) * get_current_calender_time()+0.5;
+				rtsyn_start_time=get_current_calender_time();
+				rtsyn_start_sample=current_sample;
+				last_event_time=rtsyn_start_time;
+		}else{
+				nev.type = ME_NONE;
+			if( (event_time - last_event_time) > 1.0/(double)TICKTIME_HZ ) {
+				buf_time = last_event_time + 1.0/(double)TICKTIME_HZ;
+				rtsyn_seq_set_time(&nev, buf_time);
+				play_event(&nev);
+				aq_fill_nonblocking();
+				
+				while( event_time > buf_time + 1.0/(double)TICKTIME_HZ){
+					buf_time = buf_time + 1.0/(double)TICKTIME_HZ;
+					rtsyn_seq_set_time(&nev, buf_time);
+					play_event(&nev);
+					aq_fill_nonblocking();
+				}
+			}
+				gch = GLOBAL_CHANNEL_EVENT_TYPE(ev->type);
+				if(gch || !IS_SET_CHANNELMASK(quietchannels, ev->channel) ){
+					rtsyn_seq_set_time(ev,event_time);
+					play_event(ev);
+					aq_fill_nonblocking();
+					last_event_time = (event_time  > last_event_time) ? event_time : last_event_time ;
+				}
+			}
 //		}
-	}
-#ifdef USE_WINSYN_TIMER_I
-	rtsyn_mutex_unlock(timerMUTEX);
-#endif 
+//		}
+		rtsyn_played = 1;
 
+
+}
+void rtsyn_play_event(MidiEvent *ev){
+	rtsyn_play_event_time(ev, get_current_calender_time());
+}
+
+void rtsyn_wot_reset(void){
+	int i;
+	kill_all_voices();
+	if (free_instruments_afterwards){
+		free_instruments(0);
+	}
+	aq_flush(1);
+//	play_mode->close_output();	// PM_REQ_PLAY_START wlll called in playmidi_stream_init()
+//	play_mode->open_output();	// but w32_a.c does not have it.
+	play_mode->acntl(PM_REQ_FLUSH, NULL);
+
+	readmidi_read_init();
+	playmidi_stream_init();
+	change_system_mode(rtsyn_system_mode);
+	reset_midi(1);
+	reduce_voice_threshold = 0; // * Disable auto reduction voice *
+	auto_reduce_polyphony = 0;
+}
+
+void rtsyn_tmr_reset(void){
+    	if(ctl->id_character == 'N')
+        	current_sample = 0;	
+		rtsyn_start_time=get_current_calender_time();
+		rtsyn_start_sample=current_sample;
+		last_event_time=rtsyn_start_time + rtsyn_latency;
+		last_calc_time  = rtsyn_start_time;
 }
 
 void rtsyn_reset(void){
-		rtsyn_stop_playing();
-#ifdef USE_WINSYN_TIMER_I
-	        rtsyn_mutex_lock(timerMUTEX);
-#endif
-
-		free_instruments(0);        //also in rtsyn_server_reset
-		free_global_mblock();
-#ifdef USE_WINSYN_TIMER_I
-	        rtsyn_mutex_unlock(timerMUTEX);
-#endif
-
-		rtsyn_server_reset();
-//		printf("system reseted\n");
+	rtsyn_wot_reset();
+	rtsyn_tmr_reset();
 }
 
 void rtsyn_server_reset(void){
-#ifdef USE_WINSYN_TIMER_I
-	rtsyn_mutex_lock(timerMUTEX);
-#endif 
-	play_mode->close_output();	// PM_REQ_PLAY_START wlll called in playmidi_stream_init()
-	play_mode->open_output();	// but w32_a.c does not have it.
-	readmidi_read_init();
-	playmidi_stream_init();
-	starttime=get_current_calender_time();
-	reduce_voice_threshold = 0; // * Disable auto reduction voice *
-	auto_reduce_polyphony = 0;
-	event_time_offset = 0;
-#ifdef USE_WINSYN_TIMER_I
-	rtsyn_mutex_unlock(timerMUTEX);
-#endif 
+	rtsyn_wot_reset();
+	if(rtsyn_sample_time_mode !=1){
+		rtsyn_tmr_reset();
+	}
 }
 
 void rtsyn_stop_playing(void)
@@ -380,93 +351,59 @@ void rtsyn_stop_playing(void)
 	if(upper_voices) {
 		MidiEvent ev;
 		ev.type = ME_EOT;
+		ev.time = 0;
 		ev.a = 0;
 		ev.b = 0;
-		rtsyn_play_event(&ev);
-#ifdef USE_WINSYN_TIMER_I
-	        rtsyn_mutex_lock(timerMUTEX);
-#endif
-		aq_flush(1);
-#ifdef USE_WINSYN_TIMER_I
-		        rtsyn_mutex_unlock(timerMUTEX);
-#endif
+		rtsyn_play_event_time(&ev, rtsyn_latency + get_current_calender_time());
+		sleep( rtsyn_latency * 1000.0);
+		aq_flush(0);
 	}
 }
-extern int32 current_sample;
-extern FLOAT_T midi_time_ratio;
-extern int volatile stream_max_compute;
 
 
-static void seq_set_time(MidiEvent *ev)
+void rtsyn_seq_set_time(MidiEvent *ev, double event_time)
 {
 	double currenttime, time_div;
 	
-	currenttime=get_current_calender_time();
-	time_div=currenttime-starttime;
-	ev->time=((double) current_sample
-			+ (play_mode->rate)*time_div+0.5);
-	starttime=currenttime;
-	
-	rtsyn_reachtime=currenttime +  (double)(1.0f/TICKTIME_HZ);
+	time_div = event_time  - rtsyn_start_time;
+	ev->time = rtsyn_start_sample
+		+(int32) ((double)(play_mode->rate) * time_div+0.5);
 }
 
-#if 0
-static void seq_set_time(MidiEvent *ev)
-{
-	double past_time,btime;
-	static int shift=0;
-
-	if(set_time_first==2){
-		starttime=get_current_calender_time()-(double)current_sample/(double)play_mode->rate;
-	}
-	past_time = (int32)((get_current_calender_time() - starttime)*play_mode->rate);	
-//	printf("%f,%f\n",(double)past_time,(  (double)current_sample-(double)past_time )  );
-	if (set_time_first==1){
-		shift=(double)past_time-(double)current_sample;
-///		printf("%d\n",shift);
-	}
-	if (set_time_first>0) set_time_first--;
-	event_time_offset=play_mode->rate/TICKTIME_HZ;
-	ev->time = past_time;
-	if(set_time_first==0 && (past_time-current_sample>stream_max_compute*play_mode->rate/1000)){ 
-		starttime=get_current_calender_time()-(double)(current_sample+shift)/(double)play_mode->rate;
-		ev->time=current_sample+shift;
-	}
-	ev->time += (int32)event_time_offset;
-
-	
-	rtsyn_reachtime=get_current_calender_time()+  (double)(1.0f/TICKTIME_HZ);
-	
-#if 0
-	btime = (double)((ev->time-current_sample/midi_time_ratio)/play_mode->rate);
-	btime *= 1.01; /* to be sure */
-	aq_set_soft_queue(btime, 0.0);
-#endif
-}
-#endif
 
 void rtsyn_play_calculate(){
 	MidiEvent ev;
-
-#ifndef USE_WINSYN_TIMER_I	
-	ev.type = ME_NONE;
-	seq_set_time(&ev);
-	play_event(&ev);
-	aq_fill_nonblocking();
-#endif
+	double currenet_event_time, current_time;
 	
+	current_time = get_current_calender_time();
+	currenet_event_time = current_time + rtsyn_latency;
+	
+	if( (rtsyn_played == 0)  && (currenet_event_time > last_calc_time + 1.0/(double)TICKTIME_HZ) /* event buffer is empty */
+		||  (current_time + 1.0/(double)TICKTIME_HZ*2.0 > last_event_time) /* near miss */
+	){
+		ev.type = ME_NONE;
+		rtsyn_play_event_time(&ev, currenet_event_time);
+		last_calc_time=currenet_event_time;
+	}
+	rtsyn_played = 0;
+	
+
 	if(active_sensing_flag==~0 && (get_current_calender_time() > active_sensing_time+0.5)){
 //normaly acitive sensing expiering time is 330ms(>300ms) but this loop is heavy
 		play_mode->close_output();
 		play_mode->open_output();
 		ctl->cmsg(  CMSG_ERROR, VERB_NORMAL,"Active Sensing Expired\n");
+		rtsyn_server_reset();
 		active_sensing_flag=0;
 	}
 }
 	
-int rtsyn_play_one_data (int port, int32 dwParam1){
+int rtsyn_play_one_data (int port, int32 dwParam1, double event_time){
 	MidiEvent ev;
-
+	
+	if(rtsyn_sample_time_mode != 1){
+		event_time += rtsyn_latency;
+	}
 	ev.type = ME_NONE;
 	ev.channel = dwParam1 & 0x0000000f;
 	ev.channel = ev.channel+port*16;
@@ -518,9 +455,19 @@ int rtsyn_play_one_data (int port, int32 dwParam1){
 			printf("MIDI Time Code Qtr\n");
 		if ((dwParam1 & 0x000000ff) == 0xf3)
 			//Song Select(Song #) (not need)
-		if ((dwParam1 & 0x000000ff) == 0xf6)
-			//Tune request (not need)
-			printf("Tune request\n");
+#endif
+		if ((dwParam1 & 0x000000ff) == 0xf6){
+			//Tune request  but use to make TiMidity++  to calculate.
+			if(rtsyn_sample_time_mode == 1){
+				ev.type = ME_NONE;
+				rtsyn_play_event_sample(&ev, event_time);
+				aq_fill_nonblocking();
+				//aq_soft_flush();
+			}else{
+				//printf("Tune request\n");
+			}
+		}
+#if 0
 		if ((dwParam1 & 0x000000ff) == 0xf8)
 			//Timing Clock (not need)
 			printf("Timing Clock\n");
@@ -540,8 +487,12 @@ int rtsyn_play_one_data (int port, int32 dwParam1){
 			active_sensing_time = get_current_calender_time();
 		}
 		if ((dwParam1 & 0x000000ff) == 0xff) {
-			//System Reset
-			printf("System Reset\n");
+			//System Reset  use for TiMidity++  timer  reset
+			if(rtsyn_sample_time_mode == 1){
+				rtsyn_tmr_reset();
+			}else{
+				//printf("System Reset\n");
+			}
 		}
 		break;
 	default:
@@ -549,29 +500,45 @@ int rtsyn_play_one_data (int port, int32 dwParam1){
 		break;
 	}
 	if (ev.type != ME_NONE) {
-		rtsyn_play_event(&ev);
+		if(rtsyn_sample_time_mode != 1){
+				rtsyn_play_event_time(&ev, event_time);
+		}else{
+				rtsyn_play_event_sample(&ev, event_time);
+		}
 	}
 	return 0;
 }
 
 
-void rtsyn_play_one_sysex (char *sysexbuffer, int exlen ){
+void rtsyn_play_one_sysex (char *sysexbuffer, int exlen, double event_time ){
 	int i,j,chk,ne;
 	MidiEvent ev;
 	MidiEvent evm[260];
+	
+	if(rtsyn_sample_time_mode != 1){
+		event_time += rtsyn_latency;
+	}
 
-	if(sysexbuffer[exlen-1] == '\xf7'){            // I don't konw why this need
-		for(i=0;i<EX_RESET_NO;i++){
-			chk=0;
-			for(j=0;(j<exlen)&&(j<11);j++){
-				if(chk==0 && sysex_resets[i][j]!=sysexbuffer[j]){
-					chk=~0;
-				}
-			}
-			if(chk==0){
-				 rtsyn_server_reset();
+	if( (sysexbuffer[0] != '\xf0') && (sysexbuffer[0] != '\xf7') ) return ;
+
+/* // this is bad check  someone send SysEx f0xxxxxxxxxxx without xf7 format.
+	if(   ((sysexbuffer[0] != '\xf0') && (sysexbuffer[0] != '\xf7')) ||
+	((sysexbuffer[0] == '\xf0') && (sysexbuffer[exlen-1] != '\xf7'))  ) return ;
+*/
+
+/*
+	for(i=0;i<EX_RESET_NO;i++){
+		chk=0;
+		for(j=0;(j<exlen)&&(j<11);j++){
+			if(chk==0 && sysex_resets[i][j]!=sysexbuffer[j]){
+				chk=~0;
 			}
 		}
+		if(chk==0){
+			 rtsyn_server_reset();
+		}
+	}
+*/
 /*
 		printf("SyeEx length=%x bytes \n", exlen);
 		for(i=0;i<exlen;i++){
@@ -579,19 +546,32 @@ void rtsyn_play_one_sysex (char *sysexbuffer, int exlen ){
 		}
 		printf("\n");
 */
-		if(parse_sysex_event(sysexbuffer+1,exlen-1,&ev)){
-			if(ev.type==ME_RESET && rtsyn_system_mode!=DEFAULT_SYSTEM_MODE){
-				ev.a=rtsyn_system_mode;
-				change_system_mode(rtsyn_system_mode);
-				rtsyn_play_event(&ev);
+	if(parse_sysex_event(sysexbuffer+1,exlen-1,&ev)){
+		if(ev.type==ME_RESET)  rtsyn_server_reset();
+		if(ev.type==ME_RESET && rtsyn_system_mode!=DEFAULT_SYSTEM_MODE){
+			ev.a=rtsyn_system_mode;
+			change_system_mode(rtsyn_system_mode);
+			if(rtsyn_sample_time_mode != 1){
+				rtsyn_play_event_time(&ev, event_time);
 			}else{
-				rtsyn_play_event(&ev);
+				rtsyn_play_event_sample(&ev, event_time);
 			}
-		}
-		if(ne=parse_sysex_event_multi(sysexbuffer+1,exlen-1, evm)){
-			for (i = 0; i < ne; i++){
-					rtsyn_play_event(&evm[i]);
+		}else{
+			if(rtsyn_sample_time_mode != 1){
+				rtsyn_play_event_time(&ev, event_time);
+			}else{
+				rtsyn_play_event_sample(&ev, event_time);
 			}
 		}
 	}
+	if(ne=parse_sysex_event_multi(sysexbuffer+1,exlen-1, evm)){
+		for (i = 0; i < ne; i++){
+			if(rtsyn_sample_time_mode != 1){
+				rtsyn_play_event_time(&(evm[i]), event_time);
+			}else{
+				rtsyn_play_event_sample(&(evm[i]), event_time);
+			}
+		}
+	}
+	
 }

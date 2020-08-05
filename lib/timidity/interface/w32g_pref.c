@@ -19,7 +19,6 @@
 
 	w32g_pref.c: Written by Daisuke Aoki <dai@y7.net>
 */
-
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif /* HAVE_CONFIG_H */
@@ -30,7 +29,6 @@
 #include <stddef.h>
 #include <windows.h>
 #undef RC_NONE
-
 #include <commctrl.h>
 #ifndef NO_STRING_H
 #include <string.h>
@@ -471,9 +469,16 @@ PrefPlayerDialogProc(HWND hwnd, UINT uMess, WPARAM wParam, LPARAM lParam)
 	   }
 			break;
 		case IDC_BUTTON_CFG_EDIT:
+
+		if(getenv("TIMIDITY_CFG_EDITOR") != NULL){
+			ShellExecute(NULL, "open", getenv("TIMIDITY_CFG_EDITOR"), ConfigFile, NULL, SW_SHOWNORMAL);
+		}else{	
 			ShellExecute(NULL, "open", "notepad.exe", ConfigFile, NULL, SW_SHOWNORMAL);
+		}
+			break;		 
+/*			ShellExecute(NULL, "open", "notepad.exe", ConfigFile, NULL, SW_SHOWNORMAL);
 			break;
-/*		case IDC_BUTTON_CFG_DIR:
+		case IDC_BUTTON_CFG_DIR:
 			ShellExecute(NULL, "open", ConfigFileOpenDir, NULL, NULL, SW_SHOWNORMAL);
 			break;*/
 		case IDC_BUTTON_CFG_RELOAD:
@@ -1094,6 +1099,11 @@ PrefTiMidity2DialogProc(HWND hwnd, UINT uMess, WPARAM wParam, LPARAM lParam)
 		int i;
 		char *p;
 		st_temp->voices = GetDlgItemInt(hwnd,IDC_EDIT_VOICES,NULL,FALSE);
+		if(st_temp->voices > max_voices){
+			max_voices = st_temp->voices;
+			voice = (Voice *) safe_realloc(voice, max_voices * sizeof(Voice));
+			memset(voice, 0, max_voices * sizeof(Voice));
+		}
 		st_temp->amplification = GetDlgItemInt(hwnd,IDC_EDIT_AMPLIFICATION,NULL,FALSE);
 		DLG_CHECKBUTTON_TO_FLAG(hwnd,IDC_CHECKBOX_FREE_INST,st_temp->free_instruments_afterwards);
 		DLG_CHECKBUTTON_TO_FLAG(hwnd,IDC_CHECKBOX_ANTIALIAS,st_temp->antialiasing_allowed);
@@ -1216,7 +1226,7 @@ static char **cb_info_IDC_COMBO_BANDWIDTH;
 static char *cb_info_IDC_COMBO_OUTPUT_MODE_jp[]= {
 	"以下のファイルに出力",(char *)0,
 #if defined(__CYGWIN32__) || defined(__MINGW32__)
-	"ファイル名を自動で決定し、ソ\ースと同じフォルダに出力",(char *)1,
+//	"ファイル名を自動で決定し、ソ\ースと同じフォルダに出力",(char *)1,
 #else
 	"ファイル名を自動で決定し、ソースと同じフォルダに出力",(char *)1,
 #endif
@@ -1500,6 +1510,11 @@ PrefTiMidity3DialogProc(HWND hwnd, UINT uMess, WPARAM wParam, LPARAM lParam)
 #ifdef AU_GOGO
 				if(st_temp->opt_playmode[0]=='g'){
 					gogoConfigDialog();
+				}
+#endif
+#ifdef AU_PORTAUDIO_DLL
+				if(st_temp->opt_playmode[0]=='o'){
+					asioConfigDialog();
 				}
 #endif
 			}
@@ -1864,8 +1879,8 @@ static char **GetMidiINDrivers ( void )
 			MidiINDrivers[i] = NULL;
 			break;
 		}
-		MidiINDrivers[max+1] = NULL;
 	}
+	MidiINDrivers[max+1] = NULL;
 	return MidiINDrivers;
 }
 
@@ -3546,3 +3561,72 @@ int vorbis_ConfigDialogInfoLoadINI(void)
 }
 
 #endif	// AU_VORBIS
+
+
+#ifdef AU_PORTAUDIO_DLL
+///////////////////////////////////////////////////////////////////////
+//
+// asioConfigDialog
+//
+///////////////////////////////////////////////////////////////////////
+#include <portaudio.h>
+#include <pa_asio.h>
+#include "w32_portaudio.h"
+
+
+int asioConfigDialog(void)
+{
+	extern HWND hMainWnd;
+
+	PaHostApiTypeId HostApiTypeId;
+	const PaHostApiInfo  *HostApiInfo;
+	PaDeviceIndex DeviceIndex;
+	PaError err;
+	HWND hWnd;
+	int buffered_data;
+
+	PaHostApiIndex i, ApiCount;
+	
+	
+	if(load_portaudio_dll(0))
+		return -1;
+	
+	play_mode->acntl(PM_REQ_GETFILLED, &buffered_data);
+	if (buffered_data != 0) return -1;
+	
+	play_mode->close_output();
+	err = Pa_Initialize();
+	if( err != paNoError ) goto error1;
+
+
+	HostApiTypeId = paASIO;
+	i = 0;
+	hWnd = hPrefWnd;
+	ApiCount = Pa_GetHostApiCount();
+	do{
+		HostApiInfo=Pa_GetHostApiInfo(i);
+		if( HostApiInfo->type == HostApiTypeId ) break;
+	    i++;
+	}while ( i < ApiCount );
+	if ( i == ApiCount ) goto error2;
+    DeviceIndex = HostApiInfo->defaultOutputDevice;
+	if(DeviceIndex==paNoDevice) goto error2;
+
+	if (HostApiTypeId ==  paASIO){
+    	err = PaAsio_ShowControlPanel( DeviceIndex, (void*) hWnd);
+		if( err != paNoError ) goto error1;
+	}
+	Pa_Terminate();
+	play_mode->open_output();
+//  	free_portaudio_dll();
+	return 0;
+	
+error1:
+//  	free_portaudio_dll();
+	MessageBox(NULL, Pa_GetErrorText( err ), "Port Audio (asio) error", IDOK);
+error2:
+	Pa_Terminate();
+	return -1;
+}
+
+#endif //AU_PORTAUDIO_DLL

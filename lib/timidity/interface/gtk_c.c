@@ -1,6 +1,6 @@
-/* 
+/*
     TiMidity++ -- MIDI to WAVE converter and player
-    Copyright (C) 1999-2002 Masanao Izumo <mo@goice.co.jp>
+    Copyright (C) 1999-2004 Masanao Izumo <iz@onicos.co.jp>
     Copyright (C) 1995 Tuukka Toivonen <tt@cgs.fi>
 
     This program is free software; you can redistribute it and/or modify
@@ -15,23 +15,22 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
     motif_ctl.c: written by Vincent Pagel (pagel@loria.fr) 10/4/95
-   
-    A motif interface for TIMIDITY : to prevent X redrawings from 
+
+    A motif interface for TIMIDITY: to prevent X redrawings from
     interfering with the audio computation, I don't use the XtAppAddWorkProc
 
     I create a pipe between the timidity process and a Motif interface
     process forked from the 1st one
 
     Copied the Motif file to create a Gtk+ interface.
-          - Glenn Trigg 29 Oct 1998
+        - Glenn Trigg 29 Oct 1998
 
     Modified for TiMidity++
-         - Isaku Yamahata 03 Dec 1998
-
-    */
+        - Isaku Yamahata 03 Dec 1998
+*/
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -57,7 +56,7 @@
 
 static int ctl_open(int using_stdin, int using_stdout);
 static void ctl_close(void);
-static void ctl_pass_playing_list(int number_of_files, char *list_of_files[]);
+static int ctl_pass_playing_list(int number_of_files, char *list_of_files[]);
 static int ctl_read(int32 *valp);
 static int cmsg(int type, int verbosity_level, char *fmt, ...);
 static void ctl_event(CtlEvent *e);
@@ -85,15 +84,20 @@ static void ctl_lyric(int);
 ControlMode ctl = 
 {
     "gtk+ interface", 'g',
+    "gtk",
     1,0,0,
     0,
     ctl_open,
     ctl_close,
     ctl_pass_playing_list,
     ctl_read,
+    NULL,
     cmsg,
     ctl_event
 };
+
+static uint32 cuepoint = 0;
+static int cuepoint_pending = 0;
 
 
 /***********************************************************************/
@@ -142,6 +146,10 @@ static void ctl_event(CtlEvent *e)
 	break;
       case CTLE_PLAY_END:
 	break;
+	case CTLE_CUEPOINT:
+		cuepoint = e->v1;
+		cuepoint_pending = 1;
+		break;
       case CTLE_TEMPO:
 	break;
       case CTLE_METRONOME:
@@ -514,6 +522,12 @@ ctl_read(int32 *valp)
 {
     int num;
 
+	if (cuepoint_pending) {
+		*valp = cuepoint;
+		cuepoint_pending = 0;
+		return RC_FORWARD;
+	}
+
     /* We don't wan't to lock on reading  */
     num = gtk_pipe_read_ready();
 
@@ -528,7 +542,7 @@ ctl_read(int32 *valp)
 #endif
 }
 
-static void
+static int 
 ctl_pass_playing_list(int number_of_files, char *list_of_files[])
 {
     int i=0;
@@ -558,7 +572,7 @@ ctl_pass_playing_list(int number_of_files, char *list_of_files[])
 	}
 	else {
 	    if (command==RC_QUIT)
-		return;
+		return 0;
 	    if (command==RC_ERROR)
 		command=RC_TUNE_END; /* Launch next file */
 	    
@@ -580,6 +594,7 @@ ctl_pass_playing_list(int number_of_files, char *list_of_files[])
 	    command = ctl_blocking_read(&val);
 	}
     }
+    return 0;
 }
 
 /*

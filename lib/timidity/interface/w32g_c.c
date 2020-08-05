@@ -1,7 +1,7 @@
 /*
-    TiMidity -- MIDI to WAVE converter and player
-    Copyright (C) 1999-2002 Masanao Izumo <mo@goice.co.jp>
-    Copyright (C) 1995 Tuukka Toivonen <toivonen@clinet.fi>
+    TiMidity++ -- MIDI to WAVE converter and player
+    Copyright (C) 1999-2004 Masanao Izumo <iz@onicos.co.jp>
+    Copyright (C) 1995 Tuukka Toivonen <tt@cgs.fi>
 
     This program is free software; you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -15,7 +15,7 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
     w32g_c.c: written by Daisuke Aoki <dai@y7.net>
                          Masanao Izumo <mo@goice.co.jp>
@@ -72,6 +72,8 @@ static int mark_apply_setting = 0;
 PanelInfo *Panel = NULL;
 static void CanvasUpdateInterval(void);
 static void ctl_panel_refresh(void);
+static void AddStartupMessage(const char *message);
+static void ShowStartupMessage(void);
 
 char *w32g_output_dir = NULL;
 int w32g_auto_output_mode = 0;
@@ -86,7 +88,7 @@ extern int w32g_msg_box(char *message, char *title, int type);
 
 static int ctl_open(int using_stdin, int using_stdout);
 static void ctl_close(void);
-static void ctl_pass_playing_list(int number_of_files, char *list_of_files[]);
+static int ctl_pass_playing_list(int number_of_files, char *list_of_files[]);
 static void ctl_event(CtlEvent *e);
 static int ctl_read(int32 *valp);
 static int cmsg(int type, int verbosity_level, char *fmt, ...);
@@ -98,15 +100,20 @@ static int cmsg(int type, int verbosity_level, char *fmt, ...);
 ControlMode ctl=
 {
     "Win32 GUI interface", 'w',
+    "w32gui",
     1,1,0,
     CTLF_AUTOSTART | CTLF_DRAG_START,
     ctl_open,
     ctl_close,
     ctl_pass_playing_list,
     ctl_read,
+    NULL,
     cmsg,
     ctl_event
 };
+
+static uint32 cuepoint = 0;
+static int cuepoint_pending = 0;
 
 #define FORCE_TIME_PERIOD
 #ifdef FORCE_TIME_PERIOD
@@ -119,6 +126,7 @@ static int ctl_open(int using_stdin, int using_stdout)
 	return 0;
     ctl.opened = 1;
     set_trace_loop_hook(CanvasUpdateInterval);
+    ShowStartupMessage();
 
     /* Initialize Panel */
     Panel = (PanelInfo *)safe_malloc(sizeof(PanelInfo));
@@ -489,7 +497,7 @@ static int ctl_refine_playlist(void)
     return RC_NONE;
 }
 
-static int w32g_ext_control(int rc, int32 value)
+static int w32g_ext_control(int rc, ptr_size_t value)
 {
     switch(rc)
     {
@@ -542,13 +550,19 @@ static int w32g_ext_control(int rc, int32 value)
     return RC_NONE;
 }
 
-static int ctl_read(int32 *valp)
+static int ctl_read(int32  *valp)
 {
     int rc;
-
-    rc = w32g_get_rc(valp, play_pause_flag);
+    ptr_size_t buf;
+	if (cuepoint_pending) {
+		*valp = cuepoint;
+		cuepoint_pending = 0;
+		return RC_FORWARD;
+	}
+    rc = w32g_get_rc(&buf, play_pause_flag);
+    *valp=(int32)buf;
     if(rc >= RC_EXT_BASE)
-	return w32g_ext_control(rc, *valp);
+	return w32g_ext_control(rc, buf);
     return rc;
 }
 
@@ -568,11 +582,57 @@ static int cmsg(int type, int verbosity_level, char *fmt, ...)
     if((type==CMSG_TEXT || type==CMSG_INFO || type==CMSG_WARNING) &&
        ctl.verbosity<verbosity_level)
 	return 0;
-    if(type == CMSG_FATAL)
+    if (type == CMSG_ERROR)
+	AddStartupMessage(buffer);
+    else if (type == CMSG_FATAL) {
+	ShowStartupMessage();
 	w32g_msg_box(buffer, "TiMidity Error", MB_OK);
+    }
     PutsConsoleWnd(buffer);
     PutsConsoleWnd("\n");
     return 0;
+}
+
+static char *startup_message = NULL, *startup_message_tail;
+
+static void AddStartupMessage(const char *message)
+{
+	static int remaining;
+	int length;
+	if (ctl.opened)
+		return;
+	length = strlen(message);
+	if (startup_message == NULL)
+	{
+		remaining = 2048;	/* simple */
+		startup_message = malloc(remaining);
+		if (startup_message == NULL)
+			return;
+		startup_message_tail = startup_message;
+		remaining--;
+	}
+	length = min(length, remaining);
+	strncpy(startup_message_tail, message, length);
+	remaining -= length;
+	startup_message_tail += length;
+	if (remaining > 0)
+	{
+		*startup_message_tail++ = '\n';
+		remaining--;
+	}
+}
+
+static void ShowStartupMessage(void)
+{
+	if (startup_message == NULL)
+		return;
+	if (startup_message != startup_message_tail)
+	{
+		*startup_message_tail = '\0';
+		w32g_msg_box(startup_message, "TiMidity Error", MB_OK);
+	}
+	free(startup_message);
+	startup_message = NULL;
 }
 
 static void ctl_panel_refresh(void)
@@ -662,11 +722,11 @@ static void ctl_tempo(int t, int tr)
 }
 
 extern BOOL SetWrdWndActive(void);
-static void ctl_pass_playing_list(int number_of_files, char *list_of_files[])
+static int ctl_pass_playing_list(int number_of_files, char *list_of_files[])
 {
 	static int init_flag = 1;
     int rc;
-    int32 value;
+    ptr_size_t value;
     extern void timidity_init_aq_buff(void);
     int errcnt;
 
@@ -779,7 +839,7 @@ static void ctl_pass_playing_list(int number_of_files, char *list_of_files[])
 		if(ctl.flags & CTLF_AUTOEXIT) {
 		    if(play_mode->fd != -1)
 			aq_flush(0);
-		    return;
+		    return 0;
 		}
 		break;
 	    }
@@ -803,7 +863,7 @@ static void ctl_pass_playing_list(int number_of_files, char *list_of_files[])
 		if(ctl.flags & CTLF_AUTOEXIT){
 		    if(play_mode->fd != -1)
 			aq_flush(0);
-		    return;
+		    return 0;
 		}
 		if((ctl.flags & CTLF_LIST_LOOP) && w32g_nvalid_playlist())
 		{
@@ -839,7 +899,7 @@ static void ctl_pass_playing_list(int number_of_files, char *list_of_files[])
 	  case RC_QUIT:
 	    if(play_mode->fd != -1)
 		aq_flush(1);
-	    return;
+	    return 0;
 
 	  case RC_CHANGE_VOLUME:
 	    amplification += value;
@@ -868,6 +928,7 @@ static void ctl_pass_playing_list(int number_of_files, char *list_of_files[])
 	    PrefSettingApplyReally();
 	rc = RC_NONE;
     }
+	return 0;
 }
 
 static void ctl_lcd_mark(int flag, int x, int y)
@@ -1158,6 +1219,10 @@ static void ctl_event(CtlEvent *e)
       case CTLE_PLAY_END:
 	MainWndScrollbarProgressUpdate(-1);
 	break;
+	case CTLE_CUEPOINT:
+		cuepoint = e->v1;
+		cuepoint_pending = 1;
+		break;
       case CTLE_CURRENT_TIME: {
 	  int sec;
 	  if(midi_trace.flush_flag)

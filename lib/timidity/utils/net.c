@@ -55,10 +55,28 @@
 #endif /* SOCKET_ERROR */
 #endif
 
+#ifdef WIN32
+#if _WIN32_WINNT < 0x0501
+typedef int (WSAAPI * GETADDRINFO) (const char FAR *, const char FAR *,
+                                          const struct addrinfo FAR *,
+                                          struct addrinfo FAR * FAR *);
+
+typedef void (WSAAPI * FREEADDRINFO) ( struct addrinfo FAR * );
+extern GETADDRINFO ws2_getaddrinfo;
+extern FREEADDRINFO ws2_freeaddrinfo;
+#define getaddrinfo ws2_getaddrinfo
+#define freeaddrinfo ws2_freeaddrinfo
+#else
+#include <wspiapi.h>
+#endif
+#endif
+
 SOCKET open_socket(char *host, unsigned short port)
 {
-    SOCKET fd;
-    struct sockaddr_in in;
+    SOCKET fd = -1;
+    struct addrinfo hints, *result, *rp;
+    char service[NI_MAXSERV];
+    int s;
 
 #if defined(WINSOCK)
     static int first = 1;
@@ -69,27 +87,48 @@ SOCKET open_socket(char *host, unsigned short port)
     }
 #endif
 
-    memset(&in, 0, sizeof(in));
-    if((in.sin_addr.s_addr = inet_addr(host)) == INADDR_NONE)
-    {
-	struct hostent *hp;
-	if((hp = gethostbyname(host)) == NULL)
-	    return (SOCKET)-1;
-	memcpy(&in.sin_addr, hp->h_addr, hp->h_length);
+    memset(&hints, 0, sizeof(struct addrinfo));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+#ifdef AI_ADDRCONFIG
+    /* By default, only look up addresses using address types for
+     * which a local interface is configured (i.e. no IPv6 if no IPv6
+     * interfaces. */
+    hints.ai_flags = AI_ADDRCONFIG;
+#endif
+
+    snprintf(service, sizeof(service), "%d", port);
+
+    s = getaddrinfo(host, service, &hints, &result);
+#ifdef AI_ADDRCONFIG
+    if (s == EAI_BADFLAGS) {
+        /* Retry with no flags if AI_ADDRCONFIG was rejected. */
+        hints.ai_flags = 0;
+        s = getaddrinfo(host, service, &hints, &result);
     }
-    in.sin_port = htons(port);
-    in.sin_family = AF_INET;
+#endif
 
-    if((fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == INVALID_SOCKET)
-	return (SOCKET)-1;
+    if (s)
+        return (SOCKET)-1;
 
-    if(connect(fd, (struct sockaddr *)&in, sizeof(in)) == SOCKET_ERROR)
+    for (rp = result; rp != NULL; rp = rp->ai_next)
     {
-	closesocket(fd);
-	return (SOCKET)-1;
+        if (rp->ai_family != AF_INET && rp->ai_family != AF_INET6)
+            continue;
+
+        fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+
+        if (fd != -1 && connect(fd, rp->ai_addr, rp->ai_addrlen) != -1)
+            break;
+
+        if (fd != -1) {
+            close(fd);
+            fd = -1;
+        }
     }
 
-    return fd;
+    freeaddrinfo(result);
+    return (SOCKET) fd;
 }
 
 #if !defined(__W32__) || defined(__CYGWIN32__)
@@ -259,4 +298,5 @@ int socket_fflush(FILE *fp)
 {
     return 0;
 }
+
 #endif

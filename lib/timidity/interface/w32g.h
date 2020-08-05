@@ -64,9 +64,6 @@ typedef LPTHREAD_START_ROUTINE BCC_BEGINTHREAD_START_ADDRESS;
 #elif defined(_BORLANDC_)
 #define crt_beginthread(start_address,stack_size,arglist) \
 (HANDLE)_beginthread((BCC_BEGINTHREAD_START_ADDRESS)start_address,(unsigned)stack_size,(void *)arglist)
-#elif defined(__FreeBSD__)
-#define crt_beginthread(start_address,stack_size,arglist) \
-(HANDLE)CreateThread(NULL,(DWORD)stack_size,(LPTHREAD_START_ROUTINE)start_address,(LPVOID)arglist,0,NULL)
 #else
 #define crt_beginthread(start_address,stack_size,arglist) \
 (HANDLE)CreateThread(NULL,(DWORD)stack_size,(LPTHREAD_START_ROUTINE)start_address,(LPVOID)arglist,0,&dwTmp)
@@ -79,9 +76,6 @@ typedef LPTHREAD_START_ROUTINE BCC_BEGINTHREAD_START_ADDRESS;
 #elif defined(_BORLANDC_)
 #define crt_beginthreadex(security,stack_size,start_address,arglist,initflag,thrdaddr ) \
 (HANDLE)_beginthreadNT((BCC_BEGINTHREAD_START_ADDRESS)start_address,(unsigned)stack_size,(void *)arglist,(void *)security_attrib,(unsigned long)create_flags,(unsigned long *)thread_id)
-#elif defined(__FreeBSD__)
-#define crt_beginthreadex(security,stack_size,start_address,arglist,initflag,thrdaddr ) \
-(HANDLE)CreateThread((LPSECURITY_ATTRIBUTES)security,(DWORD)stack_size,(LPTHREAD_START_ROUTINE)start_address,(LPVOID)arglist,(DWORD)initflag,(LPLONG)thrdaddr)
 #else
 #define crt_beginthreadex(security,stack_size,start_address,arglist,initflag,thrdaddr ) \
 (HANDLE)CreateThread((LPSECURITY_ATTRIBUTES)security,(DWORD)stack_size,(LPTHREAD_START_ROUTINE)start_address,(LPVOID)arglist,(DWORD)initflag,(LPDWORD)thrdaddr)
@@ -198,7 +192,7 @@ typedef struct {
 	int changed;
 	char dummy[1024];
 
-	int8 GSLCD[16][16];
+	int8 GSLCD[20][16];
 	double gslcd_last_display_time;
 	int8 gslcd_displayed_flag;
 } PanelInfo;
@@ -256,8 +250,8 @@ typedef struct _TmColors {
 /* w32g_i.c */
 extern int w32g_open(void);
 extern void w32g_close(void);
-extern void w32g_send_rc(int rc, int32 value);
-extern int w32g_get_rc(int32 *value, int wait_if_empty);
+extern void w32g_send_rc(int rc, ptr_size_t value);
+extern int w32g_get_rc(ptr_size_t *value, int wait_if_empty);
 extern void w32g_lock(void);
 extern void w32g_unlock(void);
 extern void MainWndScrollbarProgressUpdate(int sec);
@@ -265,10 +259,10 @@ extern void PutsConsoleWnd(char *str);
 extern void w32g_ctle_play_start(int sec);
 extern void SettingWndApply(void);
 extern int w32g_lock_open_file;
-extern void w32g_i_init();
+extern void w32g_i_init(void);
 extern void CanvasChange(int mode);
 extern HINSTANCE hInst;
-extern void w32g_show_console();
+extern void w32g_show_console(void);
 extern void MPanelStartLoad(char *filename);
 
 
@@ -297,6 +291,7 @@ extern int w32g_refine_playlist(int *is_selected_removed);
 extern int w32g_uniq_playlist(int *is_selected_removed);
 extern void w32g_clear_playlist(void);
 extern void w32g_rotate_playlist(int dest);
+void w32g_free_playlist(void);
 
 #if 0
 /* w32g_panel.c */

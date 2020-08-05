@@ -144,10 +144,10 @@ float pitch_freq_lb_table[129] = {
    (f)ifth,		rotate back 1,	rotate back 2
 */
 int chord_table[4][3][3] = {
-    0, 4, 7,     -5, 0, 4,     -8, -5, 0,
-    0, 3, 7,     -5, 0, 3,     -9, -5, 0,
-    0, 3, 6,     -6, 0, 3,     -9, -6, 0,
-    0, 5, 7,     -5, 0, 5,     -7, -5, 0
+ { { 0, 4, 7, }, { -5, 0, 4, }, { -8, -5, 0, }, },
+ { { 0, 3, 7, }, { -5, 0, 3, }, { -9, -5, 0, }, },
+ { { 0, 3, 6, }, { -6, 0, 3, }, { -9, -6, 0, }, },
+ { { 0, 5, 7, }, { -5, 0, 5, }, { -7, -5, 0, }, },
 };
 
 /* write the chord type to *chord, returns the root note of the chord */
@@ -160,7 +160,6 @@ int assign_chord(double *pitchbins, int *chord,
     int prune_pitches[10] = {0};
     int i, j, k, n, n2;
     double val, cutoff, max;
-    int start = 0;
     int root_flag;
 
     *chord = -1;
@@ -330,18 +329,16 @@ float freq_fourier(Sample *sp, int *chord)
     uint32 length, length0;
     int32 maxoffset, minoffset, minoffset1, minoffset2;
     int32 minbin, maxbin;
-    int32 bin, bestbin, largest_peak;
+    int32 bin;
     int32 i, j, n, total;
     unsigned int rate;
     int pitch, bestpitch, minpitch, maxpitch, maxpitch2;
     sample_t *origdata;
     float f0, mag, maxmag;
     int16 amp, oldamp, maxamp;
-    int32 maxpos;
+    int32 maxpos = 0;
     double sum, weightsum, maxsum;
-    double sum_bestfreq;
     double f0_inv;
-    int num_maxsum;
     float freq, newfreq, bestfreq, freq_inc;
     float minfreq, maxfreq, minfreq2, maxfreq2;
     float min_guessfreq, max_guessfreq;
@@ -496,7 +493,6 @@ float freq_fourier(Sample *sp, int *chord)
 	if (sum > maxsum)
 	{
 	    maxsum = sum;
-	    largest_peak = i;
 	}
     }
 
@@ -624,8 +620,6 @@ float freq_fourier(Sample *sp, int *chord)
 	/* look for harmonics */
 	for (freq = minfreq2; freq <= maxfreq2; freq += freq_inc)
 	{
-	    double ratio;
-	
     	    n = total = 0;
     	    sum = weightsum = 0;
 

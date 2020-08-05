@@ -34,7 +34,9 @@
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
+#ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
+#endif /* HAVE_SYS_TYPES_H */
 #ifdef TIME_WITH_SYS_TIME
 #include <sys/time.h>
 #endif
@@ -53,17 +55,13 @@
 #include <mmsystem.h>
 #endif
 
-#if !defined(__MACOS__)
-#define USE_WINSYN_TIMER_I 1
 
 #ifndef __W32__
-#include <pthread.h>
 #ifdef HAVE_STDLIB_H
 #include <stdlib.h>
 #endif
 #endif
 
-#endif
 
 
 #include "timidity.h"
@@ -88,17 +86,22 @@
 
 /* peek playmidi.c */
 extern int32 current_sample;
-extern FLOAT_T midi_time_ratio;
 
 /* peek timidity.c */
 extern VOLATILE int intr;
 
-/* How often play data. */
-#define TICKTIME_HZ 100
+/* How often data pass to the buffer */
+#define TICKTIME_HZ 200
+
+/* latency (sec)  > 1.0 / TICKTIME_HZ * 4.0 */
+#define RTSYN_LATENCY 0.20
 
 
-extern double rtsyn_reachtime;
+extern double rtsyn_latency;   /* = RTYSN_LATENCY */
 extern int rtsyn_system_mode;
+
+extern int32 rtsyn_start_sample;
+extern int rtsyn_sample_time_mode; //bool 1 ture 0 false
 
 /* reset synth    */
 void rtsyn_gm_reset(void);
@@ -115,12 +118,15 @@ void rtsyn_normal_modeset(void);
 
 void rtsyn_init(void);
 void rtsyn_close(void);
+double rtsyn_set_latency(double latency);
 void rtsyn_play_event(MidiEvent *ev);
+void rtsyn_play_event_time(MidiEvent *ev, double event_time);
+void rtsyn_tmr_reset(void);
 void rtsyn_server_reset(void);
 void rtsyn_reset(void);
 void rtsyn_stop_playing(void);
-int rtsyn_play_one_data (int port, int32 dwParam1);
-void rtsyn_play_one_sysex (char *sysexbuffer, int exlen );
+int rtsyn_play_one_data (int port, int32 dwParam1, double event_time);
+void rtsyn_play_one_sysex (char *sysexbuffer, int exlen, double event_time );
 void rtsyn_play_calculate(void);
 
 
@@ -130,6 +136,8 @@ void rtsyn_play_calculate(void);
 /*  Interface dependent functions (see rtsyn_winmm.c rtsyn_portmidi.c)        */
 /*                                                                            */
 /******************************************************************************/
+#if defined(IA_WINSYN) || defined(IA_PORTMIDISYN) || defined(IA_W32G_SYN) 
+
 #define MAX_PORT 4
 extern int rtsyn_portnumber;
 extern unsigned int portID[MAX_PORT];
@@ -142,12 +150,34 @@ void rtsyn_synth_stop(void);
 int rtsyn_play_some_data (void);
 void rtsyn_midiports_close(void);
 
-
 #if defined(IA_WINSYN) || defined(IA_W32G_SYN)
 int rtsyn_buf_check(void);
 #endif
 
+#endif /* IA_WINSYN IA_PORTMIDISYN IA_W32G_SYN */
 
+#ifdef IA_NPSYN
+#define RTSYN_NP_DATA 1
+#define RTSYN_NP_LONGDATA 2
+
+typedef struct rtsyn_np_evbuf_t{
+	uint32 wMsg;
+	union {
+		uint32 port;
+		uint32  exlen;
+	};
+	union {
+		uint32	dwParam1;
+	};
+	uint32	dwParam2;
+}  RtsynNpEvBuf;
+
+void rtsyn_np_set_pipe_name(char*);
+int rtsyn_np_synth_start(void);
+void rtsyn_np_synth_stop(void);
+int rtsyn_np_play_some_data (void);
+void rtsyn_np_pipe_close();
+#endif
 
 #ifdef USE_WINSYN_TIMER_I
 

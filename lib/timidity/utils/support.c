@@ -21,11 +21,13 @@
                 Written by Masanao Izumo <mo@goice.co.jp>
 */
 
-
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif /* HAVE_CONFIG_H */
 
+#ifdef __POCC__
+#include <sys/types.h>
+#endif /* for off_t */
 #include <stdio.h>
 #include <stdlib.h>
 #ifdef HAVE_UNISTD_H
@@ -63,6 +65,16 @@
 /* From glib-1.1.13:gstrfuncs.c
  * Modified by Masanao Izumo <mo@goice.co.jp>
  */
+#ifndef VA_COPY
+# if (defined (__GNUC__) && defined (__PPC__) && (defined (_CALL_SYSV) || defined (__WIN32__))) || defined (__WATCOMC__)
+#  define VA_COPY(ap1, ap2)	  (*(ap1) = *(ap2))
+# elif defined (VA_COPY_AS_ARRAY)
+#  define VA_COPY(ap1, ap2)	  memmove ((ap1), (ap2), sizeof (va_list))
+# else /* va_list is a pointer */
+#  define VA_COPY(ap1, ap2)	  ((ap1) = (ap2))
+# endif /* va_list is a pointer */
+#endif /* !VA_COPY */
+
 static int printf_string_upper_bound (const char* format,
 			     va_list      args)
 {
@@ -199,30 +211,38 @@ static int printf_string_upper_bound (const char* format,
   return len;
 }
 
-void vsnprintf(char *buff, size_t bufsiz, const char *fmt, va_list ap)
+int vsnprintf(char *buff, size_t bufsiz, const char *fmt, va_list ap)
 {
     MBlockList pool;
     char *tmpbuf = buff;
+    int ret;
+    va_list ap2;
 
+    VA_COPY(ap2, ap);
     init_mblock(&pool);
     tmpbuf = new_segment(&pool, printf_string_upper_bound(fmt, ap));
-    vsprintf(tmpbuf, fmt, ap);
-    strncpy(buff, tmpbuf, bufsiz-1);
+    ret = vsprintf(tmpbuf, fmt, ap2);
+    strncpy(buff, tmpbuf, bufsiz);
     buff[bufsiz-1] = '\0';
     reuse_mblock(&pool);
+    va_end(ap2);
+    return ret;
 }
 #endif /* HAVE_VSNPRINTF */
 
 
 #ifndef HAVE_SNPRINTF
-void snprintf(char *buff, size_t bufsiz, const char *fmt, ...)
+int snprintf(char *buff, size_t bufsiz, const char *fmt, ...)
 {
+    int ret;
     va_list ap;
+
     va_start(ap, fmt);
-    vsnprintf(buff, bufsiz, fmt, ap);
+    ret = vsnprintf(buff, bufsiz, fmt, ap);
     va_end(ap);
+    return ret;
 }
-#endif /* HAVE_VSNPRINTF */
+#endif /* HAVE_SNPRINTF */
 
 #ifndef HAVE_STRERROR
 #ifndef HAVE_ERRNO_H
@@ -821,3 +841,19 @@ strlcat(char *dst, const char *src, size_t siz)
 	return(dlen + (s - src));	/* count does not include NUL */
 }
 #endif  /* strlcat() */
+
+#ifdef __DMC__
+int strcasecmp(const char *s1, const char *s2)
+{
+	int	c1,c2,i;
+	
+	for( i=0; ; i++){
+		if( !s1[i] && !s2[i] ) return 0; //equal
+		if( !s1[i] || !s2[i] ) return 1;
+		c1= ( isupper(s1[i]) ? tolower(s1[i]) : s1[i] );
+		c2= ( isupper(s2[i]) ? tolower(s2[i]) : s2[i] );
+		if( c1 != c2 )	return 1;
+	}
+	return 0; //equal
+}
+#endif

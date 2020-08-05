@@ -1,6 +1,6 @@
-/* 
+/*
     TiMidity++ -- MIDI to WAVE converter and player
-    Copyright (C) 1999-2002 Masanao Izumo <mo@goice.co.jp>
+    Copyright (C) 1999-2004 Masanao Izumo <iz@onicos.co.jp>
     Copyright (C) 1995 Tuukka Toivonen <tt@cgs.fi>
 
     This program is free software; you can redistribute it and/or modify
@@ -15,11 +15,11 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
-	
-	Macintosh interface for TiMidity
-	by T.Nogami	<t-nogami@happy.email.ne.jp>
-	
+    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+
+    Macintosh interface for TiMidity
+    by T.Nogami <t-nogami@happy.email.ne.jp>
+
     mac_c.c
     Macintosh control mode
 */
@@ -71,7 +71,7 @@ static void ctl_sustain(int channel, int val);
 static void ctl_pitch_bend(int channel, int val);
 static void ctl_reset(void);
 static int ctl_open(int using_stdin, int using_stdout);
-static void ctl_pass_playing_list(int number_of_files, char *list_of_files[]);
+static int ctl_pass_playing_list(int number_of_files, char *list_of_files[]);
 static void ctl_close(void);
 static int ctl_read(int32 *valp);
 static int cmsg(int type, int verbosity_level, char *fmt, ...);
@@ -85,15 +85,20 @@ static void ctl_event(CtlEvent *e);
 ControlMode ctl= 
 {
   "mac interface", 'm',
+  "mac",
   1,1,0,
   0,
   ctl_open,
   ctl_close,
   ctl_pass_playing_list,
   ctl_read,
+  NULL,
   cmsg,
   ctl_event
 };
+
+static uint32 cuepoint = 0;
+static int cuepoint_pending = 0;
 
 // ***********************************************
 Boolean	gCursorIsWatch, gHasDragMgr;
@@ -561,8 +566,7 @@ void change_ListRow( short row, const MidiFile* file)
 	p= strrchr(file->filename, PATH_SEP);
 	if( p ){
 		size_t len = strlen(buf);
-		char* q = buf[len];		 /* last */
-		snprintf(buf, 256-len-1, "	(%s)", p+1);
+		snprintf(&buf[len], sizeof(buf)-len-1, "  (%s)", p+1);
 		buf[sizeof(buf)-1] = '\0';
 	}
 
@@ -745,13 +749,14 @@ static int	message_DocWin(int message, long param)
 			char		*p, docname[256];
 
 			//midiname= (char*)param;
-		    strcpy(docname, midiname, 256);
+		    strncpy(docname, midiname, sizeof docname - 1);
+		    docname[sizeof docname - 1] = '\0';
 	    	if((p = strrchr(docname, '.')) == NULL){
 				return 0;
 		    }
-            else if(p - docname >= 256 - 4) {
-                /* cannot strcpy: that cause buffer overrun */
-            }
+		    else if(p - docname >= sizeof docname - 4) {
+				return 0;	/* cannot strcpy: that cause buffer overrun */
+		    }
 		    if('A' <= p[1] && p[1] <= 'Z')	strcpy(p + 1, "DOC");
 	    						else		strcpy(p + 1, "doc");
 
@@ -955,7 +960,7 @@ static void ctl_close(void)
 }
 
 
-static void ctl_pass_playing_list(int init_number_of_files,
+static int ctl_pass_playing_list(int init_number_of_files,
 				  char * /*init_list_of_files*/ [])
 {
 	EventRecord	event;
@@ -983,6 +988,7 @@ static void ctl_pass_playing_list(int init_number_of_files,
 		mac_HandleEvent(&event);
 	}	
 	Do_Quit();
+	return 0;
 }
 
 static Boolean UserWantsControl()
@@ -998,6 +1004,12 @@ static Boolean UserWantsControl()
 static int ctl_read(int32* /*valp*/)
 {
 	int			ret;
+	
+	if (cuepoint_pending) {
+		*valp = cuepoint;
+		cuepoint_pending = 0;
+		return RC_FORWARD;
+	}
 	
 	//if( gCursorIsWatch ){ gCursorIsWatch=false; InitCursor(); }
 	if( gQuit ) Do_Quit();	/* Quit Apple event occured */
@@ -1182,6 +1194,10 @@ static void ctl_event(CtlEvent *e)
 	break;
       case CTLE_PLAY_END:
 	break;
+	case CTLE_CUEPOINT:
+		cuepoint = e->v1;
+		cuepoint_pending = 1;
+		break;
       case CTLE_TEMPO:
 	break;
       case CTLE_METRONOME:

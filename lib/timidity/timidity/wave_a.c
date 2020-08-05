@@ -26,6 +26,9 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif /* HAVE_CONFIG_H */
+#ifdef __POCC__
+#include <sys/types.h>
+#endif // for off_t
 #include <stdio.h>
 
 #ifdef __W32__
@@ -73,7 +76,7 @@ PlayMode dpm = {
 #else
     PE_16BIT|PE_SIGNED|PE_BYTESWAP,
 #endif
-    PF_PCM_STREAM,
+    PF_PCM_STREAM|PF_FILE_OUTPUT,
     -1,
     {0,0,0,0,0},
     "RIFF WAVE file", 'w',
@@ -115,7 +118,9 @@ static char *orig_RIFFheader=
  */
 
 /* Windows WAVE File Encoding Tags */
+#ifndef WAVE_FORMAT_PCM
 #define WAVE_FORMAT_PCM       0x01
+#endif
 #define WAVE_FORMAT_ALAW      0x06
 #define WAVE_FORMAT_MULAW     0x07
 
@@ -175,7 +180,7 @@ static int wav_output_open(const char *fname)
     t *= 2;
   RIFFheader[32] = t;
 
-  if(write(fd, RIFFheader, 44) == -1) {
+  if(std_write(fd, RIFFheader, 44) == -1) {
     ctl->cmsg(CMSG_ERROR, VERB_NORMAL, "%s: write: %s",
 	      dpm.name, strerror(errno));
     close_output();
@@ -237,7 +242,6 @@ static int open_output(void)
 #ifndef __W32G__
     if(dpm.name == NULL) {
       dpm.flag |= PF_AUTO_SPLIT_FILE;
-      dpm.name = NULL;
     } else {
       dpm.flag &= ~PF_AUTO_SPLIT_FILE;
       if((dpm.fd = wav_output_open(dpm.name)) == -1)
@@ -276,14 +280,14 @@ static int update_header(void)
     }
 
     tmp = LE_LONG(bytes_output + 44 - 8);
-    if(write(dpm.fd, &tmp, 4) == -1)
+    if(std_write(dpm.fd, (char *)&tmp, 4) == -1)
     {
 	lseek(dpm.fd, save_point, SEEK_SET);
 	return -1;
     }
     lseek(dpm.fd, 40, SEEK_SET);
     tmp = LE_LONG(bytes_output);
-    write(dpm.fd, &tmp, 4);
+    std_write(dpm.fd, (char *)&tmp, 4);
 
     lseek(dpm.fd, save_point, SEEK_SET);
     ctl->cmsg(CMSG_INFO, VERB_DEBUG,
@@ -299,7 +303,7 @@ static int output_data(char *buf, int32 bytes)
     if(dpm.fd == -1)
       return -1;
 
-    while(((n = write(dpm.fd, buf, bytes)) == -1) && errno == EINTR)
+    while(((n = std_write(dpm.fd, buf, bytes)) == -1) && errno == EINTR)
 	;
     if(n == -1)
     {
@@ -336,15 +340,16 @@ static int acntl(int request, void *arg)
 {
   switch(request) {
   case PM_REQ_PLAY_START:
-    if(dpm.flag & PF_AUTO_SPLIT_FILE)
+    if(dpm.flag & PF_AUTO_SPLIT_FILE){
+      if(  ( NULL == current_file_info ) || (NULL == current_file_info->filename ) )
+        return auto_wav_output_open("Output.mid");
       return auto_wav_output_open(current_file_info->filename);
-    break;
+   }
+    return 0;
   case PM_REQ_PLAY_END:
-    if(dpm.flag & PF_AUTO_SPLIT_FILE) {
+    if(dpm.flag & PF_AUTO_SPLIT_FILE)
       close_output();
-      return 0;
-    }
-    break;
+    return 0;
   case PM_REQ_DISCARD:
     return 0;
   }

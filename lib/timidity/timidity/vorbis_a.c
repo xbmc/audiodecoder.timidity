@@ -83,7 +83,7 @@ static int acntl(int request, void *arg);
 #define dpm vorbis_play_mode
 
 PlayMode dpm = {
-    44100, PE_16BIT|PE_SIGNED, PF_PCM_STREAM,
+    44100, PE_16BIT|PE_SIGNED, PF_PCM_STREAM|PF_FILE_OUTPUT,
     -1,
     {0,0,0,0,0},
     "Ogg Vorbis", 'v',
@@ -416,7 +416,6 @@ static int open_output(void)
 #if !defined ( IA_W32GUI ) && !defined ( IA_W32G_SYN )
   if(dpm.name == NULL) {
     dpm.flag |= PF_AUTO_SPLIT_FILE;
-    dpm.name = NULL;
   } else {
     dpm.flag &= ~PF_AUTO_SPLIT_FILE;
     if((dpm.fd = ogg_output_open(dpm.name, NULL)) == -1)
@@ -476,8 +475,8 @@ static int output_data(char *readbuffer, int32 bytes)
 
 		/* write out pages (if any) */
 		while(ogg_stream_pageout(&os, &og) != 0) {
-		  write(dpm.fd, og.header, og.header_len);
-		  write(dpm.fd, og.body, og.body_len);
+		  std_write(dpm.fd, og.header, og.header_len);
+		  std_write(dpm.fd, og.body, og.body_len);
 		}
 	}
   }
@@ -518,8 +517,8 @@ static void close_output(void)
       int result = ogg_stream_pageout(&os,&og);
       if(result == 0)
 	break;
-      write(dpm.fd, og.header, og.header_len);
-      write(dpm.fd, og.body, og.body_len);
+      std_write(dpm.fd, og.header, og.header_len);
+      std_write(dpm.fd, og.body, og.body_len);
 
       /* this could be set above, but for illustrative purposes, I do
 	 it here (to show that vorbis does know where the stream ends) */
@@ -552,15 +551,16 @@ static int acntl(int request, void *arg)
 {
   switch(request) {
   case PM_REQ_PLAY_START:
-    if(dpm.flag & PF_AUTO_SPLIT_FILE)
-      return auto_ogg_output_open(current_file_info->filename,current_file_info->seq_name);
-    break;
+    if(dpm.flag & PF_AUTO_SPLIT_FILE){
+      if(  ( NULL == current_file_info ) || (NULL == current_file_info->filename ) )
+        return auto_ogg_output_open("Output.mid",NULL);
+      return auto_ogg_output_open(current_file_info->filename, current_file_info->seq_name);
+   }
+    return 0;
   case PM_REQ_PLAY_END:
-    if(dpm.flag & PF_AUTO_SPLIT_FILE) {
+    if(dpm.flag & PF_AUTO_SPLIT_FILE)
       close_output();
-      return 0;
-    }
-    break;
+    return 0;
   case PM_REQ_DISCARD:
     return 0;
   }

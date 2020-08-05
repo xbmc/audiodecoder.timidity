@@ -1,6 +1,6 @@
 /*
     TiMidity++ -- MIDI to WAVE converter and player
-    Copyright (C) 1999-2004 Masanao Izumo <iz@onicos.co.jp>
+    Copyright (C) 1999-2018 Masanao Izumo <iz@onicos.co.jp>
     Copyright (C) 1995 Tuukka Toivonen <tt@cgs.fi>
 
     This program is free software; you can redistribute it and/or modify
@@ -21,6 +21,9 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif /* HAVE_CONFIG_H */
+#ifdef __POCC__
+#include <sys/types.h>
+#endif //for off_t
 #include <stdio.h>
 #ifdef STDC_HEADERS
 #include <stdlib.h>
@@ -40,30 +43,17 @@
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif /* HAVE_UNISTD_H */
-#ifdef HAVE_SYS_STAT_H
-#include <sys/stat.h>
-#endif /* NAVE_SYS_STAT_H */
+#if TIME_WITH_SYS_TIME
+# include <sys/time.h>
+# include <time.h>
+#else
+# if HAVE_SYS_TIME_H
+#  include <sys/time.h>
+# else
+#  include <time.h>
+# endif
+#endif  /* TIME_WITH_SYS_TIME */
 #include <fcntl.h> /* for open */
-
-#ifdef HAVE_STDBOOL_H
-#include <stdbool.h>
-#endif
-
-#ifndef __bool_true_false_are_defined
-# ifdef bool
-#  undef bool
-# endif
-# ifdef ture
-#  undef ture
-# endif
-# ifdef false
-#  undef false
-# endif
-# define bool int
-# define false ((bool)0)
-# define true (!false)
-# define __bool_true_false_are_defined true
-#endif /* C99 _Bool hack */
 
 #ifdef BORLANDC_EXCEPTION
 #include <excpt.h>
@@ -77,6 +67,7 @@
 #include <ieeefp.h> /* For FP exceptions */
 #endif
 
+#include "interface.h"
 #include "timidity.h"
 #include "tmdy_getopt.h"
 #include "common.h"
@@ -102,6 +93,20 @@
 //#include "unimod.h"
 #include "quantity.h"
 
+#ifdef __BORLANDC__
+#undef inline
+#define inline
+#endif
+
+#ifdef IA_W32GUI
+#include "w32g.h"
+#include "w32g_utl.h"
+#endif
+
+#ifdef WINDRV
+/* supress std outputs */
+#define fputs(a, b)
+#endif
 
 #ifndef __GNUC__
 #define __attribute__(x) /* ignore */
@@ -147,6 +152,7 @@ enum {
 	TIM_OPT_EVIL,
 	TIM_OPT_FAST_PAN,
 	TIM_OPT_FAST_DECAY,
+	TIM_OPT_SEGMENT,
 	TIM_OPT_SPECTROGRAM,
 	TIM_OPT_KEYSIG,
 	TIM_OPT_HELP,
@@ -160,6 +166,7 @@ enum {
 	TIM_OPT_BACKGROUND,
 	TIM_OPT_RT_PRIO,
 	TIM_OPT_SEQ_PORTS,
+	TIM_OPT_RTSYN_LATENCY,
 	TIM_OPT_REALTIME_LOAD,
 	TIM_OPT_ADJUST_KEY,
 	TIM_OPT_VOICE_QUEUE,
@@ -190,6 +197,7 @@ enum {
 	TIM_OPT_POLY_REDUCE,
 	TIM_OPT_MUTE,
 	TIM_OPT_TEMPER_MUTE,
+	TIM_OPT_PRESERVE_SILENCE,
 	TIM_OPT_AUDIO_BUFFER,
 	TIM_OPT_CACHE_SIZE,
 	TIM_OPT_SAMPLE_FREQ,
@@ -205,17 +213,25 @@ enum {
 	TIM_OPT_PURE_INT,
 	TIM_OPT_MODULE,
 	/* last entry */
-	TIM_OPT_LAST = TIM_OPT_PURE_INT
+	TIM_OPT_LAST = TIM_OPT_MODULE
 };
 
+#ifdef IA_WINSYN
+const char *optcommands =
+#else
 static const char *optcommands =
-		"4A:aB:b:C:c:D:d:E:eFfg:H:hI:i:jK:k:L:M:m:N:"
+#endif
+		"4A:aB:b:C:c:D:d:E:eFfG:g:H:hI:i:jK:k:L:M:m:N:"
 		"O:o:P:p:Q:q:R:S:s:T:t:UV:vW:"
 #ifdef __W32__
 		"w:"
 #endif
-		"x:Z:";		/* Only GJlnruXYyz are remain... */
+		"x:Z:";		/* Only JlnruXYyz are remain... */
+#ifdef IA_WINSYN
+const struct option longopts[] = {
+#else
 static const struct option longopts[] = {
+#endif
 	{ "volume",                 required_argument, NULL, TIM_OPT_VOLUME },
 	{ "drum-power",             required_argument, NULL, TIM_OPT_DRUM_POWER },
 	{ "no-volume-compensation", no_argument,       NULL, TIM_OPT_DRUM_POWER },
@@ -263,6 +279,7 @@ static const struct option longopts[] = {
 	{ "fast-panning",           optional_argument, NULL, TIM_OPT_FAST_PAN },
 	{ "no-fast-decay",          no_argument,       NULL, TIM_OPT_FAST_DECAY },
 	{ "fast-decay",             optional_argument, NULL, TIM_OPT_FAST_DECAY },
+	{ "segment",                required_argument, NULL, TIM_OPT_SEGMENT },
 	{ "spectrogram",            required_argument, NULL, TIM_OPT_SPECTROGRAM },
 	{ "force-keysig",           required_argument, NULL, TIM_OPT_KEYSIG },
 	{ "help",                   optional_argument, NULL, TIM_OPT_HELP },
@@ -282,6 +299,9 @@ static const struct option longopts[] = {
 	{ "background",             optional_argument, NULL, TIM_OPT_BACKGROUND },
 	{ "realtime-priority",      required_argument, NULL, TIM_OPT_RT_PRIO },
 	{ "sequencer-ports",        required_argument, NULL, TIM_OPT_SEQ_PORTS },
+#endif
+#if defined(IA_WINSYN) || defined(IA_PORTMIDISYN) || defined(IA_NPSYN) || defined(IA_W32G_SYN) || defined(IA_W32GUI)
+	{ "rtsyn-latency",          required_argument, NULL, TIM_OPT_RTSYN_LATENCY },
 #endif
 	{ "no-realtime-load",       no_argument,       NULL, TIM_OPT_REALTIME_LOAD },
 	{ "realtime-load",          optional_argument, NULL, TIM_OPT_REALTIME_LOAD },
@@ -328,6 +348,7 @@ static const struct option longopts[] = {
 	{ "polyphony-reduction",    optional_argument, NULL, TIM_OPT_POLY_REDUCE },
 	{ "mute",                   required_argument, NULL, TIM_OPT_MUTE },
 	{ "temper-mute",            required_argument, NULL, TIM_OPT_TEMPER_MUTE },
+	{ "preserve-silence",       no_argument,       NULL, TIM_OPT_PRESERVE_SILENCE },
 	{ "audio-buffer",           required_argument, NULL, TIM_OPT_AUDIO_BUFFER },
 	{ "cache-size",             required_argument, NULL, TIM_OPT_CACHE_SIZE },
 	{ "sampling-freq",          required_argument, NULL, TIM_OPT_SAMPLE_FREQ },
@@ -347,7 +368,7 @@ static const struct option longopts[] = {
 	{ "module",                 required_argument, NULL, TIM_OPT_MODULE },
 	{ NULL,                     no_argument,       NULL, '\0'     }
 };
-#define INTERACTIVE_INTERFACE_IDS "kmqagrwAWP"
+#define INTERACTIVE_INTERFACE_IDS "kmqagrwAWNP"
 
 /* main interfaces (To be used another main) */
 #if defined(main) || defined(ANOTHER_MAIN) || defined ( IA_W32GUI ) || defined ( IA_W32G_SYN )
@@ -365,8 +386,15 @@ MAIN_INTERFACE int got_a_configuration;
 char *wrdt_open_opts = NULL;
 char *opt_aq_max_buff = NULL,
      *opt_aq_fill_buff = NULL;
+int opt_aq_fill_buff_free_needed = 1;
 void timidity_init_aq_buff(void);
 int opt_control_ratio = 0; /* Save -C option */
+#ifdef AU_PORTAUDIO
+extern int opt_pa_device_id;
+#endif
+#ifdef AU_W32
+extern int opt_wmme_device_id;
+#endif
 
 int set_extension_modes(char *);
 int set_ctl(char *);
@@ -402,20 +430,26 @@ static inline int set_default_program(int);
 static inline int parse_opt_delay(const char *);
 static inline int parse_opt_chorus(const char *);
 static inline int parse_opt_reverb(const char *);
+static int parse_opt_reverb_freeverb(const char *arg, char type);
 static inline int parse_opt_voice_lpf(const char *);
 static inline int parse_opt_noise_shaping(const char *);
 static inline int parse_opt_resample(const char *);
 static inline int parse_opt_e(const char *);
 static inline int parse_opt_F(const char *);
 static inline int parse_opt_f(const char *);
+static inline int parse_opt_G(const char *);
+static inline int parse_opt_G1(const char *);
+static int parse_segment(TimeSegment *, const char *);
+static int parse_segment2(TimeSegment *, const char *);
+static int parse_time(FLOAT_T *, const char *);
+static int parse_time2(Measure *, const char *);
 static inline int parse_opt_g(const char *);
 static inline int parse_opt_H(const char *);
 __attribute__((noreturn))
 static inline int parse_opt_h(const char *);
 #ifdef IA_DYNAMIC
 static inline void list_dyna_interface(FILE *, char *, char *);
-static inline char *dynamic_interface_info(int);
-char *dynamic_interface_module(int);
+ControlMode *dynamic_interface_module(int);
 #endif
 static inline int parse_opt_i(const char *);
 static inline int parse_opt_verbose(const char *);
@@ -428,6 +462,9 @@ static inline int parse_opt_sort(const char *);
 static inline int parse_opt_background(const char *);
 static inline int parse_opt_rt_prio(const char *);
 static inline int parse_opt_seq_ports(const char *);
+#endif
+#if defined(IA_WINSYN) || defined(IA_PORTMIDISYN) || defined(IA_NPSYN) || defined(IA_W32G_SYN) || defined(IA_W32GUI)
+static inline int parse_opt_rtsyn_latency(const char *);
 #endif
 static inline int parse_opt_j(const char *);
 static inline int parse_opt_K(const char *);
@@ -442,6 +479,9 @@ static inline int parse_opt_output_signed(const char *);
 static inline int parse_opt_output_bitwidth(const char *);
 static inline int parse_opt_output_format(const char *);
 static inline int parse_opt_output_swab(const char *);
+#if defined(AU_PORTAUDIO) || defined(AU_W32)
+static inline int parse_opt_output_device(const char *);
+#endif
 #ifdef AU_FLAC
 static inline int parse_opt_flac_verify(const char *);
 static inline int parse_opt_flac_padding(const char *);
@@ -465,6 +505,7 @@ static inline int parse_opt_p(const char *);
 static inline int parse_opt_p1(const char *);
 static inline int parse_opt_Q(const char *);
 static inline int parse_opt_Q1(const char *);
+static inline int parse_opt_preserve_silence(const char *);
 static inline int parse_opt_q(const char *);
 static inline int parse_opt_R(const char *);
 static inline int parse_opt_S(const char *);
@@ -487,19 +528,20 @@ __attribute__((noreturn))
 static inline int parse_opt_fail(const char *);
 static inline int set_value(int *, int, int, int, char *);
 static inline int set_val_i32(int32 *, int32, int32, int32, char *);
+static int parse_val_float_t(FLOAT_T *, const char *, FLOAT_T, FLOAT_T,
+		const char *, int);
+static inline int set_val_float_t(FLOAT_T *, FLOAT_T, FLOAT_T, FLOAT_T,
+		const char *, int);
 static inline int set_channel_flag(ChannelBitMask *, int32, char *);
 static inline int y_or_n_p(const char *);
 static inline int set_flag(int32 *, int32, const char *);
 static inline FILE *open_pager(void);
 static inline void close_pager(FILE *);
+#if (!defined(ANOTHER_MAIN) || defined(__W32__)) && !defined(BUILD_KODI_ADDON)
 static void interesting_message(void);
+#endif
 
-// sndfont.c
-void free_soundfonts();
-
-#ifdef IA_DYNAMIC
-MAIN_INTERFACE char dynamic_interface_id;
-#endif /* IA_DYNAMIC */
+extern StringTable wrd_read_opts;
 
 extern int SecondMode;
 
@@ -518,7 +560,7 @@ MAIN_INTERFACE struct URL_module *url_module_list[] =
 #ifndef SHARED_LIB_PATH
 #define SHARED_LIB_PATH PKGLIBDIR
 #endif /* SHARED_LIB_PATH */
-static char *dynamic_lib_root = SHARED_LIB_PATH;
+static char *dynamic_lib_root = NULL;
 #endif /* IA_DYNAMIC */
 
 #ifndef MAXPATHLEN
@@ -537,18 +579,21 @@ CRITICAL_SECTION critSect;
 static BOOL WINAPI handler(DWORD dw)
 {
 #if defined(IA_WINSYN) || defined(IA_PORTMIDISYN)
-	if( ctl->id_character == 'W' 
-		|| ctl->id_character == 'P' )
-	{
-    	rtsyn_midiports_close();
-	}
-#endif	
-    printf ("***BREAK" NLS); fflush(stdout);
-    intr++;
-    return TRUE;
+	if (ctl->id_character == 'W' || ctl->id_character == 'P')
+		rtsyn_midiports_close();
+#endif
+#if 0
+#if defined(IA_NPSYN)
+	if (ctl->id_character == 'N')
+		return FALSE;	/* why FALSE need?  It must close by intr++; */
+#endif
+#endif
+	printf ("***BREAK" NLS);
+	fflush(stdout);
+	intr++;
+	return TRUE;
 }
 #endif
-
 
 int effect_lr_mode = -1;
 /* 0: left delay
@@ -918,7 +963,8 @@ static int set_gus_patchconf(char *name, int line,
 	    ctl->cmsg(CMSG_ERROR, VERB_NORMAL,
 		      "%s: line %d: Syntax error", name, line);
 #ifdef SET_GUS_PATCHCONF_COMMENT
-	    free(old_name);
+        if(old_name != NULL)
+            free(old_name);
 #endif
 	    return 1;
 	}
@@ -956,6 +1002,10 @@ static int set_gus_patchconf(char *name, int line,
 	{
 	    ctl->cmsg(CMSG_ERROR, VERB_NORMAL,
 		      "%s: line %d: Syntax error", name, line);
+#ifdef SET_GUS_PATCHCONF_COMMENT
+        if(old_name != NULL)
+            free(old_name);
+#endif
 	    return 1;
 	}
 	tone->name = safe_strdup(opts[0]);
@@ -977,8 +1027,9 @@ static int set_gus_patchconf(char *name, int line,
         if(old_name != NULL)
             free(old_name);
 #endif
-	    return err;
+            return err;
     }
+	    return err;
     }
 #ifdef SET_GUS_PATCHCONF_COMMENT
 		if(tone->comment == NULL ||
@@ -1163,7 +1214,11 @@ static char *expand_variables(char *string, MBlockList *varbuf, const char *base
     reuse_mblock(&varbuf); \
     close_file(tf); return 1; }
 
-MAIN_INTERFACE int read_config_file(const char *name, int self)
+#define READ_CONFIG_SUCCESS        0
+#define READ_CONFIG_ERROR          1
+#define READ_CONFIG_RECURSION      2 /* Too much recursion */
+#define READ_CONFIG_FILE_NOT_FOUND 3 /* Returned only w. allow_missing_file */
+MAIN_INTERFACE int read_config_file(char *name, int self, int allow_missing_file)
 {
     struct timidity_file *tf;
     char buf[1024], *tmp, *w[MAXWORDS + 1], *cp;
@@ -1179,7 +1234,7 @@ MAIN_INTERFACE int read_config_file(const char *name, int self)
     {
 	ctl->cmsg(CMSG_ERROR, VERB_NORMAL,
 		  "Probable source loop in configuration files");
-	return 2;
+	return READ_CONFIG_RECURSION;
     }
 
     if(self)
@@ -1188,35 +1243,36 @@ MAIN_INTERFACE int read_config_file(const char *name, int self)
 	name = "(configuration)";
     }
     else
-	tf = open_file(name, 1, OF_VERBOSE);
+	tf = open_file(name, 1, allow_missing_file ? OF_NORMAL : OF_VERBOSE);
     if(tf == NULL)
-	return 1;
+	return allow_missing_file ? READ_CONFIG_FILE_NOT_FOUND :
+	                            READ_CONFIG_ERROR;
 
-	init_mblock(&varbuf);
-	if (!self)
-	{
-		basedir = strdup_mblock(&varbuf, current_filename);
-		if (is_url_prefix(basedir))
-			sep = strrchr(basedir, '/');
-		else
-			sep = pathsep_strrchr(basedir);
-	}
+    init_mblock(&varbuf);
+    if (!self)
+    {
+	basedir = strdup_mblock(&varbuf, current_filename);
+	if (is_url_prefix(basedir))
+	    sep = strrchr(basedir, '/');
 	else
-		sep = NULL;
-	if (sep == NULL)
-	{
-		#ifndef __MACOS__
-		basedir = ".";
-		#else
-		basedir = "";
-		#endif
-	}
-	else
-	{
-		if ((cp = strchr(sep, '#')) != NULL)
-			sep = cp + 1;	/* inclusive of '#' */
-		*sep = '\0';
-	}
+	    sep = pathsep_strrchr(basedir);
+    }
+    else
+	sep = NULL;
+    if (sep == NULL)
+    {
+	#ifndef __MACOS__
+	basedir = ".";
+	#else
+	basedir = "";
+	#endif
+    }
+    else
+    {
+	if ((cp = strchr(sep, '#')) != NULL)
+	    sep = cp + 1;	/* inclusive of '#' */
+	*sep = '\0';
+    }
 
     errno = 0;
     while(tf_gets(buf, sizeof(buf), tf))
@@ -1462,6 +1518,10 @@ MAIN_INTERFACE int read_config_file(const char *name, int self)
 	/* #extension HTTPproxy hostname:port */
 	else if(strcmp(w[0], "HTTPproxy") == 0)
 	{
+#ifdef SUPPORT_SOCKET
+            char r_bracket, l_bracket;
+#endif
+
 	    if(words < 2)
 	    {
 		ctl->cmsg(CMSG_ERROR, VERB_NORMAL,
@@ -1473,7 +1533,7 @@ MAIN_INTERFACE int read_config_file(const char *name, int self)
 	    /* If network is not supported, this extension is ignored. */
 #ifdef SUPPORT_SOCKET
 	    url_http_proxy_host = safe_strdup(w[1]);
-	    if((cp = strchr(url_http_proxy_host, ':')) == NULL)
+	    if((cp = strrchr(url_http_proxy_host, ':')) == NULL)
 	    {
 		ctl->cmsg(CMSG_ERROR, VERB_NORMAL,
 			  "%s: line %d: Syntax error", name, line);
@@ -1489,11 +1549,32 @@ MAIN_INTERFACE int read_config_file(const char *name, int self)
 		CHECKERRLIMIT;
 		continue;
 	    }
+
+            l_bracket = url_http_proxy_host[0];
+            r_bracket = url_http_proxy_host[strlen(url_http_proxy_host) - 1];
+
+            if (l_bracket == '[' || r_bracket == ']')
+            {
+                if (l_bracket != '[' || r_bracket != ']')
+                {
+                    ctl->cmsg(CMSG_ERROR, VERB_NORMAL,
+                              "%s: line %d: Malformed IPv6 address",
+                              name, line);
+                    CHECKERRLIMIT;
+                    continue;
+                }
+                url_http_proxy_host++;
+                url_http_proxy_host[strlen(url_http_proxy_host) - 1] = '\0';
+            } 
 #endif
 	}
 	/* #extension FTPproxy hostname:port */
 	else if(strcmp(w[0], "FTPproxy") == 0)
 	{
+#ifdef SUPPORT_SOCKET
+            char l_bracket, r_bracket;
+#endif
+
 	    if(words < 2)
 	    {
 		ctl->cmsg(CMSG_ERROR, VERB_NORMAL,
@@ -1505,7 +1586,7 @@ MAIN_INTERFACE int read_config_file(const char *name, int self)
 	    /* If network is not supported, this extension is ignored. */
 #ifdef SUPPORT_SOCKET
 	    url_ftp_proxy_host = safe_strdup(w[1]);
-	    if((cp = strchr(url_ftp_proxy_host, ':')) == NULL)
+	    if((cp = strrchr(url_ftp_proxy_host, ':')) == NULL)
 	    {
 		ctl->cmsg(CMSG_ERROR, VERB_NORMAL,
 			  "%s: line %d: Syntax error", name, line);
@@ -1521,6 +1602,23 @@ MAIN_INTERFACE int read_config_file(const char *name, int self)
 		CHECKERRLIMIT;
 		continue;
 	    }
+
+            l_bracket = url_ftp_proxy_host[0];
+            r_bracket = url_ftp_proxy_host[strlen(url_ftp_proxy_host) - 1];
+
+            if (l_bracket == '[' || r_bracket == ']')
+            {
+                if (l_bracket != '[' || r_bracket != ']')
+                {
+                    ctl->cmsg(CMSG_ERROR, VERB_NORMAL,
+                              "%s: line %d: Malformed IPv6 address",
+                              name, line);
+                    CHECKERRLIMIT;
+                    continue;
+                }
+                url_ftp_proxy_host++;
+                url_ftp_proxy_host[strlen(url_ftp_proxy_host) - 1] = '\0';
+            }
 #endif
 	}
 	/* #extension mailaddr somebody@someware.domain.com */
@@ -1559,6 +1657,9 @@ MAIN_INTERFACE int read_config_file(const char *name, int self)
 		if (*w[1] == '-') {
 			int optind_save = optind;
 			optind = 0;
+#if defined(__CYGWIN__)
+			optreset = 1;
+#endif
 			c = timidity_getopt_long(words, w, optcommands, longopts, &longind);
 			err = set_tim_opt_long(c, optarg, longind);
 			optind = optind_save;
@@ -2122,7 +2223,7 @@ MAIN_INTERFACE int read_config_file(const char *name, int self)
 	    for(i = 1; i < words; i++)
 		add_to_pathlist(w[i]);
 	}
-	else if(!strcmp(w[0], "source"))
+	else if(!strcmp(w[0], "source") || !strcmp(w[0], "trysource"))
 	{
 	    if(words < 2)
 	    {
@@ -2135,19 +2236,20 @@ MAIN_INTERFACE int read_config_file(const char *name, int self)
 	    {
 		int status;
 		rcf_count++;
-		status = read_config_file(w[i], 0);
+		status = read_config_file(w[i], 0, !strcmp(w[0], "trysource"));
 		rcf_count--;
-		if(status == 2)
-		{
-		    reuse_mblock(&varbuf);
-		    close_file(tf);
-		    return 2;
-		}
-		else if(status != 0)
-		{
-
+		switch (status) {
+		case READ_CONFIG_SUCCESS:
+		    break;
+		case READ_CONFIG_ERROR:
 		    CHECKERRLIMIT;
 		    continue;
+		case READ_CONFIG_RECURSION:
+		    reuse_mblock(&varbuf);
+		    close_file(tf);
+		    return READ_CONFIG_RECURSION;
+		case READ_CONFIG_FILE_NOT_FOUND:
+		    break;
 		}
 	    }
 	}
@@ -2334,7 +2436,7 @@ MAIN_INTERFACE int read_config_file(const char *name, int self)
     }
     reuse_mblock(&varbuf);
     close_file(tf);
-    return errcnt != 0;
+    return (errcnt == 0) ? READ_CONFIG_SUCCESS : READ_CONFIG_ERROR;
 }
 
 #ifdef SUPPORT_SOCKET
@@ -2385,58 +2487,40 @@ static int read_user_config_file(void)
 {
     char *home;
     char path[BUFSIZ];
-    int opencheck;
+    int status;
 
+    home = getenv("HOME");
 #ifdef __W32__
 /* HOME or home */
-    home = getenv("HOME");
     if(home == NULL)
 	home = getenv("home");
+#endif
     if(home == NULL)
     {
 	ctl->cmsg(CMSG_INFO, VERB_NOISY,
 		  "Warning: HOME environment is not defined.");
 	return 0;
     }
-/* .timidity.cfg or timidity.cfg */
+
+#ifdef __W32__
+/* timidity.cfg or _timidity.cfg or .timidity.cfg*/
     sprintf(path, "%s" PATH_STRING "timidity.cfg", home);
-    if((opencheck = open(path, 0)) < 0)
-    {
-	sprintf(path, "%s" PATH_STRING "_timidity.cfg", home);
-	if((opencheck = open(path, 0)) < 0)
-	{
-	    sprintf(path, "%s" PATH_STRING ".timidity.cfg", home);
-	    if((opencheck = open(path, 0)) < 0)
-	    {
-		ctl->cmsg(CMSG_INFO, VERB_NOISY, "%s: %s",
-			  path, strerror(errno));
-		return 0;
-	    }
-	}
-    }
+    status = read_config_file(path, 0, 1);
+    if (status != READ_CONFIG_FILE_NOT_FOUND)
+        return status;
 
-    close(opencheck);
-    return read_config_file(path, 0);
-#else
-    home = getenv("HOME");
-    if(home == NULL)
-    {
-	ctl->cmsg(CMSG_INFO, VERB_NOISY,
-		  "Warning: HOME environment is not defined.");
-	return 0;
-    }
+    sprintf(path, "%s" PATH_STRING "_timidity.cfg", home);
+    status = read_config_file(path, 0, 1);
+    if (status != READ_CONFIG_FILE_NOT_FOUND)
+        return status;
+#endif
+
     sprintf(path, "%s" PATH_STRING ".timidity.cfg", home);
+    status = read_config_file(path, 0, 1);
+    if (status != READ_CONFIG_FILE_NOT_FOUND)
+        return status;
 
-    if((opencheck = open(path, 0)) < 0)
-    {
-	ctl->cmsg(CMSG_INFO, VERB_NOISY, "%s: %s",
-		  path, strerror(errno));
-	return 0;
-    }
-
-    close(opencheck);
-    return read_config_file(path, 0);
-#endif /* __W32__ */
+    return 0;
 }
 
 MAIN_INTERFACE void tmdy_free_config(void)
@@ -2521,6 +2605,8 @@ MAIN_INTERFACE int set_tim_opt_short(int c, char *optarg)
 	case 'f':
 		fast_decay = (fast_decay) ? 0 : 1;
 		break;
+	case 'G':
+		return parse_opt_G(optarg);
 	case 'g':
 		return parse_opt_g(optarg);
 	case 'H':
@@ -2597,6 +2683,17 @@ MAIN_INTERFACE int set_tim_opt_short(int c, char *optarg)
 	}
 	return 0;
 }
+
+#ifdef __W32__
+MAIN_INTERFACE int set_tim_opt_short_cfg(int c, char *optarg)
+{
+	switch (c) {
+	case 'c':
+		return parse_opt_c(optarg);
+	}
+	return 0;
+}
+#endif
 
 /* -------- getopt_long -------- */
 MAIN_INTERFACE int set_tim_opt_long(int c, char *optarg, int index)
@@ -2681,6 +2778,8 @@ MAIN_INTERFACE int set_tim_opt_long(int c, char *optarg, int index)
 		return parse_opt_F(arg);
 	case TIM_OPT_FAST_DECAY:
 		return parse_opt_f(arg);
+	case TIM_OPT_SEGMENT:
+		return parse_opt_G(arg);
 	case TIM_OPT_SPECTROGRAM:
 		return parse_opt_g(arg);
 	case TIM_OPT_KEYSIG:
@@ -2708,6 +2807,10 @@ MAIN_INTERFACE int set_tim_opt_long(int c, char *optarg, int index)
 		return parse_opt_rt_prio(arg);
 	case TIM_OPT_SEQ_PORTS:
 		return parse_opt_seq_ports(arg);
+#endif
+#if defined(IA_WINSYN) || defined(IA_PORTMIDISYN) || defined(IA_NPSYN) || defined(IA_W32G_SYN) || defined(IA_W32GUI)
+	case TIM_OPT_RTSYN_LATENCY:
+		return parse_opt_rtsyn_latency(arg);
 #endif
 	case TIM_OPT_REALTIME_LOAD:
 		return parse_opt_j(arg);
@@ -2793,6 +2896,8 @@ MAIN_INTERFACE int set_tim_opt_long(int c, char *optarg, int index)
 		return parse_opt_Q(arg);
 	case TIM_OPT_TEMPER_MUTE:
 		return parse_opt_Q1(arg);
+	case TIM_OPT_PRESERVE_SILENCE:
+		return parse_opt_preserve_silence(arg);
 	case TIM_OPT_AUDIO_BUFFER:
 		return parse_opt_q(arg);
 	case TIM_OPT_CACHE_SIZE:
@@ -2827,6 +2932,28 @@ MAIN_INTERFACE int set_tim_opt_long(int c, char *optarg, int index)
 		abort();
 	}
 }
+
+#ifdef __W32__
+MAIN_INTERFACE int set_tim_opt_long_cfg(int c, char *optarg, int index)
+{
+	const struct option *the_option = &(longopts[index]);
+	char *arg;
+	
+	if (c == '?')	/* getopt_long failed parsing */
+		parse_opt_fail(optarg);
+	else if (c < TIM_OPT_FIRST)
+		return set_tim_opt_short_cfg(c, optarg);
+	if (! strncmp(the_option->name, "no-", 3))
+		arg = "no";		/* `reverse' switch */
+	else
+		arg = optarg;
+	switch (c) {
+	case TIM_OPT_CONFIG_FILE:
+		return parse_opt_c(arg);
+	}
+	return 1;
+}
+#endif
 
 static inline int parse_opt_A(const char *arg)
 {
@@ -2886,7 +3013,11 @@ static inline int parse_opt_C(const char *arg)
 
 static inline int parse_opt_c(char *arg)
 {
-	if (read_config_file(arg, 0))
+#ifdef __W32__
+	if (got_a_configuration == 1)
+		return 0;
+#endif
+	if (read_config_file(arg, 0, 0))
 		return 1;
 	got_a_configuration = 1;
 	return 0;
@@ -3302,27 +3433,66 @@ static inline int parse_opt_reverb(const char *arg)
 		break;
 	case '3':
 	case 'f':	/* freeverb */
-		if ((p = strchr(arg, ',')) != NULL) {
-			if (set_value(&opt_reverb_control, atoi(++p), 1, 0x7f,
-					"Reverb level"))
-				return 1;
-			opt_reverb_control = -opt_reverb_control - 256;
-		} else
-			opt_reverb_control = 3;
-		break;
+		return parse_opt_reverb_freeverb(arg, 'f');
 	case '4':
 	case 'G':	/* global freeverb */
-		if ((p = strchr(arg, ',')) != NULL) {
-			if (set_value(&opt_reverb_control, atoi(++p), 1, 0x7f,
-					"Reverb level"))
-				return 1;
-			opt_reverb_control = -opt_reverb_control - 384;
-		} else
-			opt_reverb_control = 4;
-		break;
+		return parse_opt_reverb_freeverb(arg, 'G');
 	default:
 		ctl->cmsg(CMSG_ERROR, VERB_NORMAL, "Invalid reverb parameter.");
 		return 1;
+	}
+	return 0;
+}
+
+static int parse_opt_reverb_freeverb(const char *arg, char type)
+{
+	const char *p;
+	
+	if ((p = strchr(arg, ',')) != NULL)
+		p++;
+	else
+		p = "";
+	/* reverb level */
+	if (*p && *p != ',') {
+		if (set_value(&opt_reverb_control, atoi(p), 1, 0x7f,
+				"Reverb level"))
+			return 1;
+		if (type == 'f')
+			opt_reverb_control = -opt_reverb_control - 256;
+		else
+			opt_reverb_control = -opt_reverb_control - 384;
+	} else
+		opt_reverb_control = (type == 'f') ? 3 : 4;
+	if ((p = strchr(p, ',')) == NULL)
+		return 0;
+	p++;
+	/* ranges 0..10 below determined just to reject an extreme value */
+	/* scaleroom */
+	if (*p && *p != ',') {
+		if (parse_val_float_t(&freeverb_scaleroom, p, 0, 10,
+				"Freeverb scaleroom", 1))
+			return 1;
+	}
+	if ((p = strchr(p, ',')) == NULL)
+		return 0;
+	p++;
+	/* offsetroom */
+	if (*p && *p != ',') {
+		if (parse_val_float_t(&freeverb_offsetroom, p, 0, 10,
+				"Freeverb offsetroom", 1))
+			return 1;
+	}
+	if ((p = strchr(p, ',')) == NULL)
+		return 0;
+	p++;
+	/* predelay factor */
+	if (*p && *p != ',') {
+		int value;
+
+		if (set_val_i32(&value, atoi(p), 0, 1000,
+				"Freeverb predelay factor"))
+			return 1;
+		reverb_predelay_factor = value / 100.0;
 	}
 	return 0;
 }
@@ -3420,6 +3590,188 @@ static inline int parse_opt_f(const char *arg)
 	return 0;
 }
 
+static inline int parse_opt_G(const char *arg)
+{
+	/* play just sub-segment(s) (seconds) */
+	TimeSegment *sp;
+	const char *p = arg;
+	int prev_end;
+	
+	if (strchr(arg, 'm'))
+		return parse_opt_G1(arg);
+	if (time_segments == NULL) {
+		time_segments = (TimeSegment *) safe_malloc(sizeof(TimeSegment));
+		time_segments->type = 0;
+		if (parse_segment(time_segments, p)) {
+			free_time_segments();
+			return 1;
+		}
+		time_segments->prev = time_segments->next = NULL, sp = time_segments;
+	} else {
+		for (sp = time_segments; sp->next != NULL; sp = sp->next)
+			;
+		sp->next = (TimeSegment *) safe_malloc(sizeof(TimeSegment));
+		sp->next->type = 0;
+		if (parse_segment(sp->next, p)) {
+			free_time_segments();
+			return 1;
+		}
+		sp->next->prev = sp, sp->next->next = NULL, sp = sp->next;
+	}
+	while ((p = strchr(p, ',')) != NULL) {
+		sp->next = (TimeSegment *) safe_malloc(sizeof(TimeSegment));
+		sp->next->type = 0;
+		if (parse_segment(sp->next, ++p)) {
+			free_time_segments();
+			return 1;
+		}
+		sp->next->prev = sp, sp->next->next = NULL, sp = sp->next;
+	}
+	prev_end = -1;
+	for (sp = time_segments; sp != NULL; sp = sp->next) {
+		if (sp->type != 0)
+			continue;
+		if (sp->begin.s <= prev_end) {
+			ctl->cmsg(CMSG_ERROR, VERB_NORMAL, "Segments must be ordered");
+			free_time_segments();
+			return 1;
+		} else if (sp->end.s != -1 && sp->begin.s >= sp->end.s) {
+			ctl->cmsg(CMSG_ERROR, VERB_NORMAL, "Segment time must be ordered");
+			free_time_segments();
+			return 1;
+		}
+		prev_end = sp->end.s;
+	}
+	return 0;
+}
+
+static inline int parse_opt_G1(const char *arg)
+{
+	/* play just sub-segment(s) (measure) */
+	TimeSegment *sp;
+	const char *p = arg;
+	int prev_end_meas, prev_end_beat;
+	
+	if (time_segments == NULL) {
+		time_segments = (TimeSegment *) safe_malloc(sizeof(TimeSegment));
+		time_segments->type = 1;
+		if (parse_segment2(time_segments, p)) {
+			free_time_segments();
+			return 1;
+		}
+		time_segments->prev = time_segments->next = NULL, sp = time_segments;
+	} else {
+		for (sp = time_segments; sp->next != NULL; sp = sp->next)
+			;
+		sp->next = (TimeSegment *) safe_malloc(sizeof(TimeSegment));
+		sp->next->type = 1;
+		if (parse_segment2(sp->next, p)) {
+			free_time_segments();
+			return 1;
+		}
+		sp->next->prev = sp, sp->next->next = NULL, sp = sp->next;
+	}
+	while ((p = strchr(p, ',')) != NULL) {
+		sp->next = (TimeSegment *) safe_malloc(sizeof(TimeSegment));
+		sp->next->type = 1;
+		if (parse_segment2(sp->next, ++p)) {
+			free_time_segments();
+			return 1;
+		}
+		sp->next->prev = sp, sp->next->next = NULL, sp = sp->next;
+	}
+	prev_end_meas = prev_end_beat = -1;
+	for (sp = time_segments; sp != NULL; sp = sp->next) {
+		if (sp->type != 1)
+			continue;
+		if (sp->begin.m.meas * 16 + sp->begin.m.beat
+				<= prev_end_meas * 16 + prev_end_beat) {
+			ctl->cmsg(CMSG_ERROR, VERB_NORMAL, "Segments must be ordered");
+			free_time_segments();
+			return 1;
+		} else if (sp->end.m.meas != -1 && sp->end.m.beat != -1
+				&& sp->begin.m.meas * 16 + sp->begin.m.beat
+				>= sp->end.m.meas * 16 + sp->end.m.beat) {
+			ctl->cmsg(CMSG_ERROR, VERB_NORMAL, "Segment time must be ordered");
+			free_time_segments();
+			return 1;
+		}
+		prev_end_meas = sp->end.m.meas, prev_end_beat = sp->end.m.beat;
+	}
+	return 0;
+}
+
+static int parse_segment(TimeSegment *seg, const char *p)
+{
+	const char *q;
+	
+	if (*p == '-')
+		seg->begin.s = 0;
+	else if (parse_time(&seg->begin.s, p))
+		return 1;
+	p = ((q = strchr(p, '-')) == NULL) ? p + strlen(p) : q + 1;
+	if (*p == ',' || *p == '\0')
+		seg->end.s = -1;
+	else if (parse_time(&seg->end.s, p))
+		return 1;
+	return 0;
+}
+
+static int parse_segment2(TimeSegment *seg, const char *p)
+{
+	const char *q;
+	
+	if (*p == '-')
+		seg->begin.m.meas = seg->begin.m.beat = 1;
+	else if (parse_time2(&seg->begin.m, p))
+		return 1;
+	p = ((q = strchr(p, '-')) == NULL) ? p + strlen(p) : q + 1;
+	if (*p == ',' || *p == 'm')
+		seg->end.m.meas = seg->end.m.beat = -1;
+	else if (parse_time2(&seg->end.m, p))
+		return 1;
+	return 0;
+}
+
+static int parse_time(FLOAT_T *param, const char *p)
+{
+	const char *p1, *p2, *p3;
+	int min;
+	FLOAT_T sec;
+	
+	p1 = ((p1 = strchr(p, ':')) == NULL) ? p + strlen(p) : p1;
+	p2 = ((p2 = strchr(p, '-')) == NULL) ? p + strlen(p) : p2;
+	p3 = ((p3 = strchr(p, ',')) == NULL) ? p + strlen(p) : p3;
+	if ((p1 < p2 && p2 <= p3) || (p1 < p3 && p3 <= p2)) {
+		if (set_value(&min, atoi(p), 0, 59, "Segment time (min part)"))
+			return 1;
+		if (parse_val_float_t(&sec, p1 + 1, 0, 59.999,
+				"Segment time (sec+frac part)", 3))
+			return 1;
+		*param = min * 60 + sec;
+	} else if (parse_val_float_t(param, p, 0, 3599.999, "Segment time", 3))
+		return 1;
+	return 0;
+}
+
+static int parse_time2(Measure *param, const char *p)
+{
+	const char *p1, *p2, *p3;
+	
+	if (set_value(&param->meas, atoi(p), 0, 999, "Segment time (measure)"))
+		return 1;
+	p1 = ((p1 = strchr(p, '.')) == NULL) ? p + strlen(p) : p1;
+	p2 = ((p2 = strchr(p, '-')) == NULL) ? p + strlen(p) : p2;
+	p3 = ((p3 = strchr(p, ',')) == NULL) ? p + strlen(p) : p3;
+	if ((p1 < p2 && p2 <= p3) || (p1 < p3 && p3 <= p2)) {
+		if (set_value(&param->beat, atoi(p1 + 1), 1, 15,
+				"Segment time (beat)"))
+			return 1;
+	} else
+		param->beat = 1;
+	return 0;
+}
+
 static inline int parse_opt_g(const char *arg)
 {
 #ifdef SUPPORT_SOUNDSPEC
@@ -3450,10 +3802,14 @@ static inline int parse_opt_H(const char *arg)
 }
 
 __attribute__((noreturn))
+#ifndef __BORLANDC__
 static inline int parse_opt_h(const char *arg)
+#else
+static int parse_opt_h(const char *arg)
+#endif
 {
 	static char *help_list[] = {
-"TiMidity++ %s (C) 1999-2004 Masanao Izumo <iz@onicos.co.jp>",
+"TiMidity++ %s (C) 1999-2018 Masanao Izumo <iz@onicos.co.jp>",
 "The original version (C) 1995 Tuukka Toivonen <tt@cgs.fi>",
 "TiMidity is free software and comes with ABSOLUTELY NO WARRANTY.",
 "",
@@ -3562,6 +3918,15 @@ static inline int parse_opt_h(const char *arg)
 "Enable "
 #endif
 "fast decay mode (toggle)",
+"  -G <begin>-<end>[,<begin2>-<end2>,...](m)",
+"  --segment=<begin>-<end>[,<begin2>-<end2>,...](m)",
+"               Play just sub-segment(s), comma separated segments",
+"                 Each segment is dash separated of two time values of:",
+"                 <begin>-<end> - defaulted to 0-infinity",
+"                 Playing from <begin> to <end>",
+"                 Time format: [<minutes>:]<seconds>[.<milliseconds>]",
+"                 'm' stands for using measure and beat instead of secs",
+"                 Time format: <measure>[.<beat>] (one-origin)",
 #ifdef SUPPORT_SOUNDSPEC
 "  -g sec     --spectrogram=sec",
 "               Open Sound-Spectrogram Window",
@@ -3577,6 +3942,11 @@ static inline int parse_opt_h(const char *arg)
 "               Set the realtime priority (0-100)",
 "             --sequencer-ports=n (for alsaseq only)",
 "               Set the number of opened sequencer ports (default is 4)",
+#endif
+#if defined(IA_WINSYN) || defined(IA_PORTMIDISYN) || defined(IA_NPSYN) || defined(IA_W32G_SYN)
+"             --rtsyn-latency=sec (for rtsyn only)",
+"               Set the realtime latency (sec)",
+"                 (default is 0.2 sec, minimum is 0.04 sec)",
 #endif
 "  -j         --[no-]realtime-load",
 "               Realtime load instrument (toggle on/off)",
@@ -3634,6 +4004,9 @@ static inline int parse_opt_h(const char *arg)
 #endif
 "  -o file    --output-file=file",
 "               Output to another file (or device/server) (Use \"-\" for stdout)",
+#if defined(AU_PORTAUDIO) || defined(AU_WIN32)
+"               Set the output device no. (-1 shows available device no. list)",
+#endif
 "  -P file    --patch-file=file",
 "               Use patch file for all programs",
 "  -p n       --polyphony=n",
@@ -3644,6 +4017,8 @@ static inline int parse_opt_h(const char *arg)
 "               Ignore channel n (0: ignore all, -n: resume channel n)",
 "     (t)     --temper-mute=n[,...]",
 "               Quiet temperament type n (0..3: preset, 4..7: user-defined)",
+"             --preserve-silence",
+"               Do not drop initial silence.  Default: drop initial silence",
 "  -q sec/n   --audio-buffer=sec/n",
 "               Specify audio buffer in seconds",
 "                 sec: Maxmum buffer, n: Filled to start (default is 5.0/100%%)",
@@ -3705,7 +4080,9 @@ static inline int parse_opt_h(const char *arg)
 	int i, j;
 	char *h;
 	ControlMode *cmp, **cmpp;
+#ifdef IA_DYNAMIC
 	char mark[128];
+#endif
 	PlayMode *pmp, **pmpp;
 	WRDTracer *wlp, **wlpp;
 	
@@ -3815,22 +4192,14 @@ static inline int parse_opt_h(const char *arg)
 	fputs(NLS, fp);
 	fputs("Available interfaces (-i, --interface option):" NLS, fp);
 	for (cmpp = ctl_list; (cmp = *cmpp) != NULL; cmpp++)
-#ifdef IA_DYNAMIC
-		if (cmp->id_character != dynamic_interface_id)
-			fprintf(fp, "  -i%c          %s" NLS,
-					cmp->id_character, cmp->id_name);
-#else
 		fprintf(fp, "  -i%c          %s" NLS,
 				cmp->id_character, cmp->id_name);
-#endif	/* IA_DYNAMIC */
 #ifdef IA_DYNAMIC
 	fprintf(fp, "Supported dynamic load interfaces (%s):" NLS,
 			dynamic_lib_root);
 	memset(mark, 0, sizeof(mark));
 	for (cmpp = ctl_list; (cmp = *cmpp) != NULL; cmpp++)
 		mark[(int) cmp->id_character] = 1;
-	if (dynamic_interface_id != 0)
-		mark[(int) dynamic_interface_id] = 0;
 	list_dyna_interface(fp, dynamic_lib_root, mark);
 #endif	/* IA_DYNAMIC */
 	fputs(NLS, fp);
@@ -3861,9 +4230,6 @@ static inline int parse_opt_h(const char *arg)
 	for (pmpp = play_mode_list; (pmp = *pmpp) != NULL; pmpp++)
 		fprintf(fp, "  -O%c          %s" NLS,
 				pmp->id_character, pmp->id_name);
-#ifdef AU_AO
-	show_ao_device_info(fp);
-#endif /* AU_AO */
 	fputs(NLS, fp);
 	fputs("Output format options (append to -O? option):" NLS
 "  `S'          stereo" NLS
@@ -3902,62 +4268,74 @@ static inline int parse_opt_h(const char *arg)
 #ifdef IA_DYNAMIC
 static inline void list_dyna_interface(FILE *fp, char *path, char *mark)
 {
-	URL url;
-	char fname[BUFSIZ], *info;
-	int id;
-	
-	if ((url = url_dir_open(path)) == NULL)
+    URL dir;
+    char fname[NAME_MAX];
+    int cwd, dummy;
+	if ((dir = url_dir_open(path)) == NULL)
 		return;
-	while (url_gets(url, fname, sizeof(fname)) != NULL)
-		if (strncmp(fname, "interface_", 10) == 0) {
-			id = fname[10];
-			if (mark[id])
-				continue;
-			mark[id] = 1;
-			if ((info = dynamic_interface_info(id)) == NULL)
-				info = dynamic_interface_module(id);
-			if (info != NULL)
-				fprintf(fp, "  -i%c          %s" NLS, id, info);
+	cwd = open(".", 0);
+	if(chdir(path) != 0)
+		return;
+	while (url_gets(dir, fname, sizeof(fname)) != NULL)
+		if (strncmp(fname, "if_", 3) == 0) {
+			void* handle = NULL;
+			char path[NAME_MAX];
+			snprintf(path, NAME_MAX, ".%c%s", PATH_SEP, fname);
+			if((handle = dl_load_file(path))) {
+				ControlMode *(* loader)(void) = NULL;
+				char c;
+				for (c = 'A'; c <= 'z'; c++) {
+					char buf[20]; /* enough */
+					if(mark[(int)c]) continue;
+					sprintf(buf, "interface_%c_loader", c);
+					if((loader = dl_find_symbol(handle, buf))) {
+						fprintf(fp, "  -i%c          %s" NLS, c, loader()->id_name);
+						mark[(int)c] = 1;
+						break;
+					}
+				}
+				dl_free(handle);
+			}
 		}
-	url_close(url);
+	dummy = fchdir(cwd);
+	dummy += close(cwd);
+	url_close(dir);
 }
 
-static inline char *dynamic_interface_info(int id)
+ControlMode *dynamic_interface_module(int id_char)
 {
-	static char libinfo[MAXPATHLEN];
-	int fd, n;
-	char *nl;
-	
-	sprintf(libinfo, "%s" PATH_STRING "interface_%c.txt",
-			dynamic_lib_root, id);
-	if ((fd = open(libinfo, 0)) < 0)
+	URL url;
+	char fname[BUFSIZ];
+	ControlMode *ctl = NULL;
+	int cwd, dummy;
+	void *handle;
+	ControlMode *(* inferface_loader)(void);
+
+	if ((url = url_dir_open(dynamic_lib_root)) == NULL)
 		return NULL;
-	n = read(fd, libinfo, sizeof(libinfo) - 1);
-	close(fd);
-	if (n <= 0)
+	cwd = open(".", 0);
+	if(chdir(dynamic_lib_root) != 0)
 		return NULL;
-	libinfo[n] = '\0';
-	if ((nl = strchr(libinfo, '\n')) == libinfo)
-		return NULL;
-	if (nl != NULL) {
-		*nl = '\0';
-		if (*(nl - 1) == '\r')
-			*(nl - 1) = '\0';
+	while (url_gets(url, fname, sizeof(fname)) != NULL) {
+		if (strncmp(fname, "if_", 3) == 0) {
+			char path[NAME_MAX], buff[20];
+			snprintf(path, NAME_MAX-1, ".%c%s", PATH_SEP, fname);
+			if((handle = dl_load_file(path)) == NULL)
+				continue;
+			sprintf(buff, "interface_%c_loader", id_char);
+			if((inferface_loader = dl_find_symbol(handle, buff)) == NULL) {
+				dl_free(handle);
+				continue;
+			}
+			ctl = inferface_loader();
+			if(ctl->id_character == id_char)
+				break;
+		}
 	}
-	return libinfo;
-}
-
-char *dynamic_interface_module(int id)
-{
-	static char shared_library[MAXPATHLEN];
-	int fd;
-	
-	sprintf(shared_library, "%s" PATH_STRING "interface_%c%s",
-			dynamic_lib_root, id, SHARED_LIB_EXT);
-	if ((fd = open(shared_library, 0)) < 0)
-		return NULL;
-	close(fd);
-	return shared_library;
+	dummy = fchdir(cwd);
+	dummy += close(cwd);
+	url_close(url);
+	return ctl;
 }
 #endif	/* IA_DYNAMIC */
 
@@ -3978,22 +4356,16 @@ static inline int parse_opt_i(const char *arg)
 #endif	/* IA_W32GUI */
 			break;
 		}
-#ifdef IA_DYNAMIC
-		if (cmp->id_character == dynamic_interface_id
-				&& dynamic_interface_module(*arg)) {
-			/* Dynamic interface loader */
-			found = 1;
-			ctl = cmp;
-			if (dynamic_interface_id != *arg) {
-				cmp->id_character = dynamic_interface_id = *arg;
-				cmp->verbosity = 1;
-				cmp->trace_playing = 0;
-				cmp->flags = 0;
-			}
-			break;
-		}
-#endif	/* IA_DYNAMIC */
 	}
+#ifdef IA_DYNAMIC
+	if (! found) {
+		cmp = dynamic_interface_module(*arg);
+		if(cmp) {
+			ctl = cmp;
+			found = 1;
+		}
+	}
+#endif	/* IA_DYNAMIC */
 	if (! found) {
 		ctl->cmsg(CMSG_ERROR, VERB_NORMAL,
 				"Interface `%c' is not compiled in.", *arg);
@@ -4111,6 +4483,24 @@ static inline int parse_opt_seq_ports(const char *arg)
 	if (set_value(&opt_sequencer_ports, atoi(arg), 1, 16,
 			"Number of sequencer ports"))
 		return 1;
+	return 0;
+}
+#endif
+
+#if defined(IA_W32GUI)
+static inline int parse_opt_rtsyn_latency(const char *arg)
+{
+	return 0;
+}
+#endif
+#if defined(IA_WINSYN) || defined(IA_PORTMIDISYN) ||defined(IA_NPSYN) || defined(IA_W32G_SYN)
+static inline int parse_opt_rtsyn_latency(const char *arg)
+{
+	double latency;
+	
+	if (sscanf(arg, "%lf", &latency) == EOF)
+		latency = RTSYN_LATENCY;
+	rtsyn_set_latency(latency);
 	return 0;
 }
 #endif
@@ -4477,6 +4867,12 @@ static inline int parse_opt_Q1(const char *arg)
 	return 0;
 }
 
+static inline int parse_opt_preserve_silence(const char *arg)
+{
+	opt_preserve_silence = 1;
+	return 0;
+}
+
 static inline int parse_opt_q(const char *arg)
 {
 	char *max_buff = safe_strdup(arg);
@@ -4492,6 +4888,7 @@ static inline int parse_opt_q(const char *arg)
 		if (opt_aq_fill_buff)
 			free(opt_aq_fill_buff);
 		opt_aq_fill_buff = ++fill_buff;
+		opt_aq_fill_buff_free_needed = 0;
 	}
 	return 0;
 }
@@ -4589,7 +4986,7 @@ __attribute__((noreturn))
 static inline int parse_opt_v(const char *arg)
 {
 	const char *version_list[] = {
-#if defined(__BORLANDC__) || defined(__MRC__) || defined(__WATCOMC__)
+#if defined(__BORLANDC__) || defined(__MRC__) || defined(__WATCOMC__) ||  defined(__DMC__)
 		"TiMidity++ ",
 				"",
 				NULL, NLS,
@@ -4600,7 +4997,7 @@ static inline int parse_opt_v(const char *arg)
 				timidity_version, NLS,
 		NLS,
 #endif
-		"Copyright (C) 1999-2004 Masanao Izumo <iz@onicos.co.jp>", NLS,
+		"Copyright (C) 1999-2018 Masanao Izumo <iz@onicos.co.jp>", NLS,
 		"Copyright (C) 1995 Tuukka Toivonen <tt@cgs.fi>", NLS,
 		NLS,
 #ifdef __W32__
@@ -4762,7 +5159,34 @@ static inline int set_val_i32(int32 *param,
 {
 	if (i < low || i > high) {
 		ctl->cmsg(CMSG_ERROR, VERB_NORMAL,
-				"%s must be between %ld and %ld", name, low, high);
+				"%s must be between %d and %d", name, low, high);
+		return 1;
+	}
+	*param = i;
+	return 0;
+}
+
+static int parse_val_float_t(FLOAT_T *param,
+		const char *arg, FLOAT_T low, FLOAT_T high, const char *name, int f)
+{
+	FLOAT_T value;
+	char *errp;
+	
+	value = strtod(arg, &errp);
+	if (arg == errp) {
+		/* only when nothing was parsed */
+		ctl->cmsg(CMSG_ERROR, VERB_NORMAL, "Invalid %s", name);
+		return 1;
+	}
+	return set_val_float_t(param, value, low, high, name, f);
+}
+
+static inline int set_val_float_t(FLOAT_T *param,
+		FLOAT_T i, FLOAT_T low, FLOAT_T high, const char *name, int f)
+{
+	if (i < low || i > high) {
+		ctl->cmsg(CMSG_ERROR, VERB_NORMAL,
+				"%s must be between %.*f and %.*f", name, f, low, f, high);
 		return 1;
 	}
 	*param = i;
@@ -4837,11 +5261,12 @@ static inline void close_pager(FILE *fp)
 #endif
 }
 
+#if (!defined(ANOTHER_MAIN) || defined(__W32__)) && !defined(BUILD_KODI_ADDON)
 static void interesting_message(void)
 {
 	printf(
 "TiMidity++ %s%s -- MIDI to WAVE converter and player" NLS
-"Copyright (C) 1999-2004 Masanao Izumo <iz@onicos.co.jp>" NLS
+"Copyright (C) 1999-2018 Masanao Izumo <iz@onicos.co.jp>" NLS
 "Copyright (C) 1995 Tuukka Toivonen <tt@cgs.fi>" NLS
 			NLS
 #ifdef __W32__
@@ -4865,6 +5290,7 @@ static void interesting_message(void)
 			NLS, (strcmp(timidity_version, "current")) ? "version " : "",
 			timidity_version);
 }
+#endif
 
 /* -------- functions for getopt_long ends here --------- */
 
@@ -4872,16 +5298,21 @@ static void interesting_message(void)
 static RETSIGTYPE sigterm_exit(int sig)
 {
     char s[4];
+#if defined(__MINGW32__) && !defined(HAVE_SSIZE_T)
+    int dummy;
+#else
+    ssize_t dummy;
+#endif
 
     /* NOTE: Here, fprintf is dangerous because it is not re-enterance
      * function.  It is possible coredump if the signal is called in printf's.
      */
 
-    write(2, "Terminated sig=0x", 17);
+    dummy = write(2, "Terminated sig=0x", 17);
     s[0] = "0123456789abcdef"[(sig >> 4) & 0xf];
     s[1] = "0123456789abcdef"[sig & 0xf];
     s[2] = '\n';
-    write(2, s, 3);
+    dummy += write(2, s, 3);
 
     safe_exit(1);
 }
@@ -5011,9 +5442,86 @@ MAIN_INTERFACE void timidity_start_initialize(void)
 
 MAIN_INTERFACE int timidity_pre_load_configuration(const char* cfgfile)
 {
+#if defined(__W32__) && !defined(BUILD_KODI_ADDON)
+    /* Windows */
+    char *strp;
+    int check;
+    char local[1024];
+
+#if defined ( IA_W32GUI ) || defined ( IA_W32G_SYN )
+    extern char *ConfigFile;
+    if(!ConfigFile[0]) {
+      GetWindowsDirectory(ConfigFile, 1023 - 13);
+      strcat(ConfigFile, "\\TIMIDITY.CFG");
+    }
+    strncpy(local, ConfigFile, sizeof(local) - 1);
+    if((check = open(local, 0)) >= 0)
+    {
+	close(check);
+	if(!read_config_file(local, 0, 0)) {
+	    got_a_configuration = 1;
+		return 0;
+	}
+    }
+#endif
+
+	/* First, try read configuration file which is in the
+     * TiMidity directory.
+     */
+    if(GetModuleFileName(NULL, local, 1023))
+    {
+        local[1023] = '\0';
+	if(strp = strrchr(local, '\\'))
+	{
+	    *(++strp)='\0';
+	    strncat(local,"TIMIDITY.CFG",sizeof(local)-strlen(local)-1);
+	    if((check = open(local, 0)) >= 0)
+	    {
+		close(check);
+		if(!read_config_file(local, 0, 0)) {
+		    got_a_configuration = 1;
+			return 0;
+		}
+	    }
+	}
+#if !defined ( IA_W32GUI ) && !defined ( IA_W32G_SYN )
+    /* Next, try read system configuration file.
+     * Default is C:\WINDOWS\TIMIDITY.CFG
+     */
+    GetWindowsDirectory(local, 1023 - 13);
+    strcat(local, "\\TIMIDITY.CFG");
+    if((check = open(local, 0)) >= 0)
+    {
+	close(check);
+	if(!read_config_file(local, 0, 0)) {
+	    got_a_configuration = 1;
+		return 0;
+	}
+    }
+#endif
+
+    }
+
+#else
     /* UNIX */
-    if(!read_config_file(cfgfile, 0))
+	char local[1024];
+	strncpy(local, cfgfile, sizeof(local) - 1);
+	if(!read_config_file(local, 0, 0))
 		got_a_configuration = 1;
+#endif
+
+#if !defined(BUILD_KODI_ADDON)
+    /* Try read configuration file which is in the
+     * $HOME (or %HOME% for DOS) directory.
+     * Please setup each user preference in $HOME/.timidity.cfg
+     * (or %HOME%/timidity.cfg for DOS)
+     */
+    if(read_user_config_file()) {
+	ctl->cmsg(CMSG_ERROR, VERB_NORMAL,
+		  "Error: Syntax error in ~/.timidity.cfg");
+	return 1;
+    }
+#endif
 
     return 0;
 }
@@ -5021,6 +5529,31 @@ MAIN_INTERFACE int timidity_pre_load_configuration(const char* cfgfile)
 MAIN_INTERFACE int timidity_post_load_configuration(const char* cfgfile)
 {
     int i, cmderr = 0;
+
+#ifdef IA_ALSASEQ
+    /* If we're going to fork for daemon mode, we need to fork now, as
+       certain output libraries (pulseaudio) become unhappy if initialized
+       before forking and then being used from the child. */
+    if (ctl->id_character == 'A' && (ctl->flags & CTLF_DAEMONIZE))
+    {
+	int pid = fork();
+	FILE *pidf;
+	switch (pid)
+	{
+	    case 0:		// child is the daemon
+		break;
+	    case -1:		// error status return
+		exit(7);
+	    default:		// no error, doing well
+		if ((pidf = fopen( "/var/run/timidity.pid", "w" )) != NULL )
+		{
+		    fprintf( pidf, "%d\n", pid );
+		    fclose( pidf );
+		}
+		exit(0);
+	}
+    }
+#endif
 
     if(play_mode == &null_play_mode)
     {
@@ -5065,7 +5598,7 @@ MAIN_INTERFACE int timidity_post_load_configuration(const char* cfgfile)
     else {
         /* apply changes made for null play mode to actual play mode */
         if(null_play_mode.encoding != 0) {
-            play_mode->encoding |= null_play_mode.encoding;
+            play_mode->encoding = apply_encoding(play_mode->encoding, null_play_mode.encoding);
         }
         if(null_play_mode.rate != 0) {
             play_mode->rate = null_play_mode.rate;
@@ -5074,7 +5607,9 @@ MAIN_INTERFACE int timidity_post_load_configuration(const char* cfgfile)
 
     if(!got_a_configuration)
     {
-	if(try_config_again && !read_config_file(cfgfile, 0))
+	char local[1024];
+	strncpy(local, cfgfile, sizeof(local) - 1);
+	if(try_config_again && !read_config_file(local, 0, 0))
 	    got_a_configuration = 1;
     }
 
@@ -5087,7 +5622,7 @@ MAIN_INTERFACE int timidity_post_load_configuration(const char* cfgfile)
 	{
 	    for(i = 0; config_string_list[i]; i++)
 	    {
-		if(!read_config_file(config_string_list[i], 1))
+		if(!read_config_file(config_string_list[i], 1, 0))
 		    got_a_configuration = 1;
 		else
 		    cmderr++;
@@ -5166,6 +5701,7 @@ MAIN_INTERFACE int timidity_play_main(int nfiles, char **files)
     int need_stdin = 0, need_stdout = 0;
     int i;
     int output_fail = 0;
+    int retval;
 
     if(nfiles == 0 && !strchr(INTERACTIVE_INTERFACE_IDS, ctl->id_character))
 	return 0;
@@ -5173,13 +5709,21 @@ MAIN_INTERFACE int timidity_play_main(int nfiles, char **files)
     if(opt_output_name)
     {
 	play_mode->name = opt_output_name;
-	if(!strcmp(opt_output_name, "-"))
+    if(!strcmp(opt_output_name, "-")){
 	    need_stdout = 1;
+#ifdef __W32__
+    	setmode( fileno(stdout), O_BINARY );
+#endif
+    }
     }
 
     for(i = 0; i < nfiles; i++)
-	if (!strcmp(files[i], "-"))
+	if (!strcmp(files[i], "-")){
 	    need_stdin = 1;
+#ifdef __W32__
+    	setmode( fileno(stdin), O_BINARY );
+#endif
+	}
 
     if(ctl->open(need_stdin, need_stdout))
     {
@@ -5285,7 +5829,7 @@ MAIN_INTERFACE int timidity_play_main(int nfiles, char **files)
 	ctl->cmsg(CMSG_INFO, VERB_DEBUG_SILLY,
 		  "pass_playing_list() nfiles=%d", nfiles);
 
-	ctl->pass_playing_list(nfiles, files);
+	retval=ctl->pass_playing_list(nfiles, files);
 
 	if(intr)
 	    aq_flush(1);
@@ -5326,80 +5870,306 @@ MAIN_INTERFACE int timidity_play_main(int nfiles, char **files)
     url_news_connection_cache(URL_NEWS_CLOSE_CACHE);
 #endif /* SUPPORT_SOCKET */
 
-    return 0;
+    return retval;
 }
 
+#ifdef IA_W32GUI
+int w32gSecondTiMidity(int opt, int argc, char **argv);
+int w32gSecondTiMidityExit(void);
+int w32gLoadDefaultPlaylist(void);
+int w32gSaveDefaultPlaylist(void);
+extern int volatile save_playlist_once_before_exit_flag;
+#endif /* IA_W32GUI */
 
-static inline bool directory_p(const char* path)
+#if defined(__W32__) && !defined(WINDRV) && !defined(BUILD_KODI_ADDON)
+typedef BOOL (WINAPI *SetDllDirectoryAProc)(LPCSTR lpPathName);
+
+/*! Remove the current directory for the search path of LoadLibrary. Returns 0 if failed. */
+static int w32_reset_dll_directory(void)
 {
-    struct stat st;
-    if(stat(path, &st) != -1) return S_ISDIR(st.st_mode);
-    return false;
+	HMODULE module;
+	SetDllDirectoryAProc setDllDirectory;
+	if ((module = GetModuleHandle(TEXT("Kernel32.dll"))) == NULL)
+		return 0;
+	if ((setDllDirectory = (SetDllDirectoryAProc)GetProcAddress(module, TEXT("SetDllDirectoryA"))) == NULL)
+		return 0;
+	/* Microsoft Security Advisory 2389418 */
+	return (*setDllDirectory)("") != 0;
 }
+#endif
 
-static inline void canonicalize_path(char* path)
-{
-    int len = strlen(path);
-    if(!len || path[len-1]==PATH_SEP) return;
-    path[len] = PATH_SEP;
-    path[len+1] = '\0';
-}
+#if (defined ( IA_W32GUI ) || defined ( IA_W32G_SYN )) && !defined(BUILD_KODI_ADDON)
+static int CoInitializeOK = 0;
+#endif
 
-
-#if defined (ENABLE_MAIN)
+#if (!defined(ANOTHER_MAIN) || defined(__W32__)) && !defined(BUILD_KODI_ADDON)
+#ifdef __W32__ /* Windows */
+#if defined(IA_W32GUI) && !defined(__CYGWIN32__) && !defined(__MINGW32__) \
+		|| defined(IA_W32G_SYN) /* _MSC_VER, _BORLANDC_, __WATCOMC__ */
+int win_main(int argc, char **argv)
+#else /* Cygwin, MinGW or console */
+int __cdecl main(int argc, char **argv)
+#endif
+#else /* UNIX */
 int main(int argc, char **argv)
+#endif
 {
-    int c, err, i;
-    int nfiles;
-    char **files;
-    int main_ret;
-    int longind;
-
-    timidity_start_initialize();
-
-	opt_output_name = safe_strdup( "za_togo_parna.tmp" );
-
-    if((err = timidity_pre_load_configuration()) != 0)
-		return err;
-
-    err += timidity_post_load_configuration();
-
-    // If there were problems, give up now
-    if( err )
-    {
-		if(!got_a_configuration)
-		{
-	    	ctl->cmsg(CMSG_FATAL, VERB_NORMAL,
-		    	  "%s: Can't read any configuration file.\nPlease check "
-		      	CONFIG_FILE, program_name);
-		}
-	}
-
-    timidity_init_player();
-
-	// Set play mode parameters
-	play_mode->rate = 48000;
-	play_mode->encoding = 0;
-	play_mode->encoding |= PE_16BIT;
-	play_mode->encoding |= PE_SIGNED;
-
-    main_ret = timidity_play_main( 1, argv + 1 );
-
-    free_instruments(0);
-    free_global_mblock();
-    free_all_midi_file_info();
-	free_userdrum();
-	free_userinst();
-    tmdy_free_config();
-	free_effect_buffers();
+	int c, err, i;
+	int nfiles;
+	char **files;
+	char *files_nbuf = NULL;
+	int main_ret;
+	int longind;
+#if defined(DANGEROUS_RENICE) && !defined(__W32__) && !defined(main)
+	/*
+	 * THIS CODES MUST EXECUTE BEGINNING OF MAIN FOR SECURITY.
+	 * DON'T PUT ANY CODES ABOVE.
+	 */
+#include <sys/resource.h>
+	int uid;
+#ifdef sun
+	extern int setpriority(int which, id_t who, int prio);
+	extern int setreuid(int ruid, int euid);
+#endif
 	
+	uid = getuid();
+	if (setpriority(PRIO_PROCESS, 0, DANGEROUS_RENICE) < 0) {
+		perror("setpriority");
+		fprintf(stderr, "Couldn't set priority to %d.", DANGEROUS_RENICE);
+	}
+	setreuid(uid, uid);
+#endif
+#if defined(REDIRECT_STDOUT)
+	memcpy(stdout, fopen(REDIRECT_STDOUT, "a+"), sizeof(FILE));
+	printf("TiMidity++ start\n");
+	fflush(stdout);
+#endif
+#if defined(__W32__) && !defined(WINDRV)
+	(void)w32_reset_dll_directory();
+#endif
+#ifdef main
+{
+	static int maincnt = 0;
+	
+	if (maincnt++ > 0) {
+		do {
+			argc--, argv++;
+		} while (argv[0][0] == '-');
+		ctl->pass_playing_list(argc, argv);
+		return 0;
+	}
+}
+#endif
+#ifdef IA_DYNAMIC
+{
+	dynamic_lib_root = safe_strdup(SHARED_LIB_PATH);
+	dl_init(argc, argv);
+}
+#endif /* IA_DYNAMIC */
+	if ((program_name = pathsep_strrchr(argv[0])))
+		program_name++;
+	else
+		program_name = argv[0];
+	if (strncmp(program_name, "timidity", 8) == 0)
+		;
+	else if (strncmp(program_name, "kmidi", 5) == 0)
+		set_ctl("q");
+	else if (strncmp(program_name, "tkmidi", 6) == 0)
+		set_ctl("k");
+	else if (strncmp(program_name, "gtkmidi", 6) == 0)
+		set_ctl("g");
+	else if (strncmp(program_name, "xmmidi", 6) == 0)
+		set_ctl("m");
+	else if (strncmp(program_name, "xawmidi", 7) == 0)
+		set_ctl("a");
+	else if (strncmp(program_name, "xskinmidi", 9) == 0)
+		set_ctl("i");
+	if (argc == 1 && !strchr(INTERACTIVE_INTERFACE_IDS, ctl->id_character)) {
+		interesting_message();
+		return 0;
+	}
+	timidity_start_initialize();
+#if defined (IA_W32GUI) || defined (IA_W32G_SYN)
+	if (CoInitialize(NULL) == S_OK)
+		CoInitializeOK = 1;
+	w32g_initialize();
+#ifdef IA_W32GUI
+	/* Secondary TiMidity Execute */
+	/*	FirstLoadIniFile(); */
+	if (w32gSecondTiMidity(SecondMode,argc,argv) == FALSE)
+		return 0;
+#endif
+	for (c = 1; c < argc; c++)
+		if (is_directory(argv[c])) {
+			char *p;
+
+			p = (char *) safe_malloc(strlen(argv[c]) + 2);
+			strcpy(p, argv[c]);
+			directory_form(p);
+			argv[c] = p;
+		}
+#endif /* IA_W32GUI || IA_W32G_SYN */
+#if defined(IA_WINSYN) || defined(IA_PORTMIDISYN) || defined(IA_NPSYN) || defined(IA_W32G_SYN)
+	opt_sf_close_each_file = 0;
+#endif 
+	optind = longind = 0;
+#if defined(__CYGWIN__)
+	optreset = 1;
+#endif
+#ifdef __W32__
+	while ((c = getopt_long(argc, argv, optcommands, longopts, &longind)) > 0)
+		if ((err = set_tim_opt_long_cfg(c, optarg, longind)) != 0)
+			break;
+#endif
+	if (got_a_configuration != 1){	
+		if ((err = timidity_pre_load_configuration()) != 0)
+			return err;
+	}
+	optind = longind = 0;
+#if defined(__CYGWIN__)
+	optreset = 1;
+#endif
+	while ((c = getopt_long(argc, argv, optcommands, longopts, &longind)) > 0)
+		if ((err = set_tim_opt_long(c, optarg, longind)) != 0)
+			break;
+	err += timidity_post_load_configuration();
+	/* If there were problems, give up now */
+	if (err || (optind >= argc
+			&& !strchr(INTERACTIVE_INTERFACE_IDS, ctl->id_character))) {
+		if (!got_a_configuration) {
+#ifdef __W32__
+			char config1[1024], config2[1024];
+			
+			memset(config1, 0, sizeof(config1));
+			memset(config2, 0, sizeof(config2));
+#if defined(IA_W32GUI) || defined(IA_W32G_SYN)
+{
+			extern char *ConfigFile;
+			
+			strncpy(config1, ConfigFile, sizeof(config1) - 1);
+}
+#else /* !IA_W32GUI && !IA_W32G_SYN */
+			GetWindowsDirectory(config1, 1023 - 13);
+			strcat(config1, "\\TIMIDITY.CFG");
+#endif
+			if (GetModuleFileName(NULL, config2, 1023)) {
+				char *strp;
+
+				config2[1023] = '\0';
+				if (strp = strrchr(config2, '\\')) {
+					*(++strp) = '\0';
+					strncat(config2, "TIMIDITY.CFG",
+							sizeof(config2) - strlen(config2) - 1);
+				}
+			}
+			ctl->cmsg(CMSG_FATAL, VERB_NORMAL,
+					"%s: Can't read any configuration file.\n"
+					"Please check %s or %s", program_name, config1, config2);
+#else
+			ctl->cmsg(CMSG_FATAL, VERB_NORMAL,
+					"%s: Can't read any configuration file.\n"
+					"Please check " CONFIG_FILE, program_name);
+#endif /* __W32__ */
+		} else
+			ctl->cmsg(CMSG_ERROR, VERB_NORMAL,
+					"Try %s -h for help", program_name);
+/* Try to continue if it is Windows version */
+#if !defined(IA_W32GUI) && !defined(IA_W32G_SYN)
+		return 1; /* problems with command line */
+#endif
+	}
+	timidity_init_player();
+	nfiles = argc - optind;
+	files  = argv + optind;
+	if (nfiles > 0
+			&& ctl->id_character != 'r' && ctl->id_character != 'A'
+			&& ctl->id_character != 'W' && ctl->id_character != 'N'
+			&& ctl->id_character != 'P')
+		files = expand_file_archives(files, &nfiles);
+	if (nfiles > 0)
+		files_nbuf = files[0];
+#if !defined(IA_W32GUI) && !defined(IA_W32G_SYN)
+	if (dumb_error_count)
+		sleep(1);
+#endif
+#ifdef IA_W32GUI
+	w32gLoadDefaultPlaylist();
+	main_ret = timidity_play_main(nfiles, files);
+	if (save_playlist_once_before_exit_flag) {
+		save_playlist_once_before_exit_flag = 0;
+		w32gSaveDefaultPlaylist();
+	}
+	w32gSecondTiMidityExit();
+	if (CoInitializeOK)
+		CoUninitialize();
+	w32g_free_playlist();
+	w32g_uninitialize();
+	w32g_free_doc();
+#else
+#ifdef IA_NPSYN
+	timeBeginPeriod(1);
+#endif 
+	main_ret = timidity_play_main(nfiles, files);
+#ifdef IA_NPSYN
+	timeEndPeriod(1);
+#endif 
+#ifdef IA_W32G_SYN
+	if (CoInitializeOK)
+		CoUninitialize();
+	w32g_uninitialize();
+#endif /* IA_W32G_SYN */
+#endif /* IA_W32GUI */
+#ifdef SUPPORT_SOCKET
+	if (url_user_agent)
+		free(url_user_agent);
+	if (url_http_proxy_host)
+		free(url_http_proxy_host);
+	if (url_ftp_proxy_host)
+		free(url_ftp_proxy_host);
+	if (user_mailaddr)
+		free(user_mailaddr);
+#endif
+#ifdef IA_DYNAMIC
+	if (dynamic_lib_root)
+		free(dynamic_lib_root);
+#endif
+	if (pcm_alternate_file)
+		free(pcm_alternate_file);
+	if (opt_output_name)
+		free(opt_output_name);
+	if (opt_aq_max_buff)
+		free(opt_aq_max_buff);
+	if (opt_aq_fill_buff && opt_aq_fill_buff_free_needed)
+		free(opt_aq_fill_buff);
+	if (output_text_code)
+		free(output_text_code);
+	if (wrdt_open_opts)
+		free(wrdt_open_opts);
+	if (nfiles > 0
+			&& ctl->id_character != 'r' && ctl->id_character != 'A'
+			&& ctl->id_character != 'W' && ctl->id_character != 'N'
+			&& ctl->id_character != 'P') {
+		free(files_nbuf);
+		free(files);
+	}
+	free_soft_queue();
+	free_instruments(0);
+	free_soundfonts();
+	free_cache_data();
+	free_wrd();
+	free_readmidi();
+	free_global_mblock();
+	tmdy_free_config();
+	free_reverb_buffer();
+	free_effect_buffers();
+	free(voice);
+	free_gauss_table();
 	for (i = 0; i < MAX_CHANNELS; i++)
 		free_drum_effect(i);
-
-    return main_ret;
+	return main_ret;
 }
-#endif // ENABLE_MAIN
 
+#else /* (!defined(ANOTHER_MAIN) || defined(__W32__)) && !defined(BUILD_KODI_ADDON) */
 
 //
 // Timidity library external interface.
@@ -5438,7 +6208,7 @@ int EXPORT Timidity_Init(int rate, int bits_per_sample, int channels, const char
 
 	if( !got_a_configuration )
 	{
-	if((err = timidity_pre_load_configuration(cfgfile)) != 0)
+		if((err = timidity_pre_load_configuration(cfgfile)) != 0)
 			return err;
 
 	err += timidity_post_load_configuration(cfgfile);
@@ -5518,21 +6288,57 @@ int EXPORT Timidity_Init(int rate, int bits_per_sample, int channels, const char
 void EXPORT Timidity_Cleanup()
 {
 	int i;
+	int nfiles = 1;
 
 #ifdef SUPPORT_SOUNDSPEC
     if(view_soundspec_flag)
 	close_soundspec();
 #endif /* SUPPORT_SOUNDSPEC */
 
+#ifdef SUPPORT_SOCKET
+	if (url_user_agent)
+		free(url_user_agent);
+	if (url_http_proxy_host)
+		free(url_http_proxy_host);
+	if (url_ftp_proxy_host)
+		free(url_ftp_proxy_host);
+	if (user_mailaddr)
+		free(user_mailaddr);
+#endif
+#ifdef IA_DYNAMIC
+	if (dynamic_lib_root)
+		free(dynamic_lib_root);
+#endif
+	if (pcm_alternate_file)
+		free(pcm_alternate_file);
+	if (opt_output_name)
+		free(opt_output_name);
+	if (opt_aq_max_buff)
+		free(opt_aq_max_buff);
+	if (opt_aq_fill_buff && opt_aq_fill_buff_free_needed)
+		free(opt_aq_fill_buff);
+	if (output_text_code)
+		free(output_text_code);
+	if (wrdt_open_opts)
+		free(wrdt_open_opts);
+
+	free_soft_queue();
     free_instruments(0);
-    free_all_midi_file_info();
-	free_userdrum();
-	free_userinst();
-    tmdy_free_config();
+	free_soundfonts();
+	free_cache_data();
+	free_wrd();
+	free_readmidi();
+	free_global_mblock();   
+	tmdy_free_config();
+	free_reverb_buffer();
 	free_effect_buffers();
+	free(voice);
+	free_gauss_table();
 	
-	for ( i = 0; i < MAX_CHANNELS; i++)
+	for (i = 0; i < MAX_CHANNELS; i++)
+	{
 		free_drum_effect(i);
+	}
 
 	if ( output_text_code )
 		free( output_text_code );
@@ -5547,7 +6353,6 @@ void EXPORT Timidity_Cleanup()
 	delete_string_table( &opt_config_string );
 
 	free_soundfonts();
-	free_gauss_table();
 	free_tone_bank();
 	free_midi_file_data();
 	resamp_cache_free_completely();
@@ -5562,3 +6367,5 @@ int EXPORT Timidity_GetLength( MidiSong *song )
 {
 	return song->samples / 48000 * 1000;
 }
+
+#endif /* (!defined(ANOTHER_MAIN) || defined(__W32__)) && !defined(BUILD_KODI_ADDON) */

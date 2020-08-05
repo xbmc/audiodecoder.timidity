@@ -26,6 +26,9 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif /* HAVE_CONFIG_H */
+#ifdef __POCC__
+#include <sys/types.h>
+#endif //for off_t
 #include <stdio.h>
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
@@ -53,8 +56,8 @@ enum trace_argtypes
     ARG_VOID,
     ARG_INT,
     ARG_INT_INT,
-    ARG_VP,
     ARG_CE,
+    ARGTIME_VP,
 };
 
 typedef struct _MidiTraceList
@@ -128,7 +131,7 @@ static void run_midi_trace(MidiTraceList *p)
       case ARG_INT_INT:
 	p->f.f2(p->a.args[0], p->a.args[1]);
 	break;
-      case ARG_VP:
+      case ARGTIME_VP:
 	p->f.fv(p->a.v);
 	break;
       case ARG_CE:
@@ -221,7 +224,7 @@ void push_midi_time_vp(int32 start, void (*f)(void *), void *vp)
 	return;
     memset(&node, 0, sizeof(node));
     node.start = start;
-    node.argtype = ARG_VP;
+    node.argtype = ARGTIME_VP;
     node.f.fv = f;
     node.a.v = vp;
     midi_trace_setfunc(&node);
@@ -229,7 +232,7 @@ void push_midi_time_vp(int32 start, void (*f)(void *), void *vp)
 
 int32 trace_loop(void)
 {
-    int32 cur, start;
+    int32 cur;
     int ctl_update;
     static int lasttime = -1;
 
@@ -243,7 +246,6 @@ int32 trace_loop(void)
 	cur = 0x7fffffff; /* apply all trace event */
 
     ctl_update = 0;
-    start = midi_trace.head->start;
     while(midi_trace.head && cur >= midi_trace.head->start
 	  && cur > 0) /* privent flying start */
     {

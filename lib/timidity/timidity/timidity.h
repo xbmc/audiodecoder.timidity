@@ -61,6 +61,8 @@
 
 #define DECOMPRESSOR_LIST { \
 			      ".gz",  "gunzip -c %s", \
+			      ".xz",  "xzcat %s", \
+			      ".lzma", "lzcat %s", \
 			      ".bz2", "bunzip2 -c %s", \
 			      ".Z",   "zcat %s", \
 			      ".zip", "unzip -p %s", \
@@ -110,7 +112,7 @@ typedef double FLOAT_T;
    sound terrible as no lowpass filtering is performed on most
    instruments before resampling. */
 #define MIN_OUTPUT_RATE 	4000
-#define MAX_OUTPUT_RATE 	65000
+#define MAX_OUTPUT_RATE 	400000
 
 
 /* Master volume in percent. */
@@ -451,6 +453,8 @@ typedef double FLOAT_T;
 
 #ifdef HAVE_ERRNO_H
 #include <errno.h>
+#else
+extern int errno;
 #endif /* HAVE_ERRNO_H */
 
 #ifdef HAVE_MACHINE_ENDIAN_H

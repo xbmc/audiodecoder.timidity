@@ -20,7 +20,7 @@
 
 /*==============================================================================
 
-  $Id: load_uni.c,v 1.13 1999/10/25 16:31:41 miod Exp $
+  $Id$
 
   UNIMOD (libmikmod's and APlayer's internal module format) loader
 
@@ -101,7 +101,7 @@ readstring (void)
   return s;
 }
 
-BOOL 
+static BOOL
 UNI_Test (void)
 {
   char id[6];
@@ -124,13 +124,13 @@ UNI_Test (void)
   return 0;
 }
 
-BOOL 
+static BOOL
 UNI_Init (void)
 {
   return 1;
 }
 
-void 
+static void
 UNI_Cleanup (void)
 {
   _mm_free (wh);
@@ -526,7 +526,7 @@ loadsmp5 (void)
   return 1;
 }
 
-BOOL 
+static BOOL
 UNI_Load (BOOL curious)
 {
   int t;
@@ -749,7 +749,7 @@ UNI_Load (BOOL curious)
   return 1;
 }
 
-CHAR *
+static CHAR *
 UNI_LoadTitle (void)
 {
   UBYTE ver;

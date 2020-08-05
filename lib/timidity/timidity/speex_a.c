@@ -26,18 +26,31 @@
 #include "config.h"
 #endif /* HAVE_CONFIG_H */
 #include <stdio.h>
+#include <stdlib.h>
 #if HAVE_UNISTD_H
 #include <unistd.h>
 #endif
 #ifdef HAVE_FCNTL_H
 #include <fcntl.h>
 #endif
+#if TIME_WITH_SYS_TIME
+# include <sys/time.h>
+# include <time.h>
+#else
+# if HAVE_SYS_TIME_H
+#  include <sys/time.h>
+# else
+#  include <time.h>
+# endif
+#endif  /* TIME_WITH_SYS_TIME */
 
-#include <speex.h>
-#include <speex_header.h>
+#include <speex/speex.h>
+#include <speex/speex_header.h>
+#include <speex/speex_stereo.h>
 #include <ogg/ogg.h>
 
 #include "timidity.h"
+#include "common.h"
 #include "output.h"
 #include "controls.h"
 #include "timer.h"
@@ -56,7 +69,7 @@ static int acntl(int request, void *arg);
 #define dpm speex_play_mode
 
 PlayMode dpm = {
-  DEFAULT_RATE, PE_SIGNED|PE_16BIT, PF_PCM_STREAM,
+  DEFAULT_RATE, PE_SIGNED|PE_16BIT, PF_PCM_STREAM|PF_FILE_OUTPUT,
   -1,
   {0},
   "Ogg Speex", 'S',
@@ -81,7 +94,7 @@ typedef struct {
   /* Speex */
   SpeexHeader      header;
   SpeexBits        bits;
-  SpeexMode*       mode;
+  const SpeexMode* mode;
   void*            state;
   int              frame_size;
   int              nframes;
@@ -211,8 +224,8 @@ void speex_set_option_nframes(int nframes)
 int oe_write_page(ogg_page *page, int fd)
 {
   int written = 0;
-  written += write(fd, page->header, page->header_len);
-  written += write(fd, page->body,   page->body_len);
+  written += std_write(fd, page->header, page->header_len);
+  written += std_write(fd, page->body,   page->body_len);
 
   return written;
 }
@@ -436,7 +449,6 @@ static int open_output(void)
 #if !defined (IA_W32GUI) && !defined (IA_W32G_SYN)
   if (dpm.name == NULL) {
     dpm.flag |= PF_AUTO_SPLIT_FILE;
-    dpm.name = NULL;
   }
   else {
     dpm.flag &= ~PF_AUTO_SPLIT_FILE;
@@ -463,7 +475,7 @@ static int output_data(char *buf, int32 nbytes)
   Speex_ctx *ctx = speex_ctx;
   int nbBytes;
   int16 *s;
-  int i, j;
+  int i;
   int ret;
   int nbytes_left;
 
@@ -614,8 +626,7 @@ static void close_output(void)
     free(speex_ctx->input);
 
     ctl->cmsg(CMSG_INFO, VERB_NORMAL, "Wrote %lu/%lu bytes(%g%% compressed)",
-	      ctx->out_bytes, ctx->in_bytes, ((double)ctx->out_bytes / (double)ctx->in_bytes)) * 100.;
-
+	      ctx->out_bytes, ctx->in_bytes, ((double)ctx->out_bytes / (double)ctx->in_bytes) * 100.0);
 
     speex_ctx->input = NULL;
     free(speex_ctx);
@@ -628,15 +639,16 @@ static int acntl(int request, void *arg)
 {
   switch(request) {
   case PM_REQ_PLAY_START:
-    if(dpm.flag & PF_AUTO_SPLIT_FILE)
-      return auto_speex_output_open(current_file_info->filename,current_file_info->seq_name);
-      break;
+    if(dpm.flag & PF_AUTO_SPLIT_FILE){
+      if(  ( NULL == current_file_info ) || (NULL == current_file_info->filename ) )
+        return auto_speex_output_open("Output.mid",NULL);
+      return auto_speex_output_open(current_file_info->filename, current_file_info->seq_name);
+   }
+    return 0;
   case PM_REQ_PLAY_END:
-    if(dpm.flag & PF_AUTO_SPLIT_FILE) {
+    if(dpm.flag & PF_AUTO_SPLIT_FILE)
       close_output();
-      return 0;
-    }
-    break;
+    return 0;
   case PM_REQ_DISCARD:
     return 0;
   }

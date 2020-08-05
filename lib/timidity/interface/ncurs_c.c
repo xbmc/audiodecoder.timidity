@@ -1,6 +1,6 @@
 /*
     TiMidity++ -- MIDI to WAVE converter and player
-    Copyright (C) 1999-2004 Masanao Izumo <iz@onicos.co.jp>
+    Copyright (C) 1999-2018 Masanao Izumo <iz@onicos.co.jp>
     Copyright (C) 1995 Tuukka Toivonen <tt@cgs.fi>
 
     This program is free software; you can redistribute it and/or modify
@@ -25,7 +25,13 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif /* HAVE_CONFIG_H */
+#ifdef __POCC__
+#include <sys/types.h>
+#endif //for off_t
 #include <stdio.h>
+#if defined(__W32__)  && !defined(STDOUT_FILENO)
+#define STDOUT_FILENO 1
+#endif
 
 #if defined(__MINGW32__) && defined(USE_PDCURSES)
 #define _NO_OLDNAMES 1	/* avoid type mismatch of beep() */
@@ -53,6 +59,9 @@ extern void sleep(unsigned long);
 
 #ifdef __W32__
 #include <windows.h>
+#ifdef MOUSE_MOVED
+#undef MOUSE_MOVED
+#endif
 #endif /* __W32__ */
 
 #ifdef HAVE_NCURSES_H
@@ -174,8 +183,9 @@ static void display_aq_ratio(void);
 
 static int ctl_open(int using_stdin, int using_stdout);
 static void ctl_close(void);
-static void ctl_pass_playing_list(int number_of_files, char *list_of_files[]);
+static int ctl_pass_playing_list(int number_of_files, char *list_of_files[]);
 static int ctl_read(int32 *valp);
+static int ctl_write(char *valp, int32 size);
 static int cmsg(int type, int verbosity_level, char *fmt, ...);
 static void ctl_event(CtlEvent *e);
 
@@ -246,15 +256,20 @@ static void ctl_reset(void);
 ControlMode ctl=
 {
     "ncurses interface", 'n',
+    "ncurses",
     1,0,0,
     0,
     ctl_open,
     ctl_close,
     ctl_pass_playing_list,
     ctl_read,
+    ctl_write,
     cmsg,
     ctl_event
 };
+
+static uint32 cuepoint = 0;
+static int cuepoint_pending = 0;
 
 
 /***********************************************************************/
@@ -444,7 +459,7 @@ static void N_ctl_scrinit(void)
     	waddch(dftwin, 'v');
     waddstr(dftwin, timidity_version);
     wmove(dftwin, VERSION_LINE,COLS-51);
-    waddstr(dftwin, "(C) 1995,1999-2004 Tuukka Toivonen, Masanao Izumo");
+    waddstr(dftwin, "(C) 1995,1999-2018 Tuukka Toivonen, Masanao Izumo");
     wmove(dftwin, FILE_LINE,0);
     waddstr(dftwin, "File:");
 #ifdef MIDI_TITLE
@@ -690,16 +705,19 @@ static void display_play_system(int mode)
     switch(mode)
     {
       case GM_SYSTEM_MODE:
-	waddstr(dftwin, "[GM]");
+	waddstr(dftwin, "[GM] ");
 	break;
       case GS_SYSTEM_MODE:
-	waddstr(dftwin, "[GS]");
+	waddstr(dftwin, "[GS] ");
 	break;
       case XG_SYSTEM_MODE:
-	waddstr(dftwin, "[XG]");
+	waddstr(dftwin, "[XG] ");
+	break;
+      case GM2_SYSTEM_MODE:
+	waddstr(dftwin, "[GM2]");
 	break;
       default:
-	waddstr(dftwin, "    ");
+	waddstr(dftwin, "     ");
 	break;
     }
     scr_modified_flag = 1;
@@ -714,38 +732,37 @@ static void display_intonation(int mode)
 
 static void ctl_ncurs_mode_init(void)
 {
-    int i;
-
-    display_channels = LINES - 8;
-    if(display_channels > MAX_CHANNELS)
-	display_channels = MAX_CHANNELS;
-    if(current_file_info != NULL && current_file_info->max_channel < 16)
-	display_channels = 16;
-
-    display_play_system(play_system_mode);
-    display_intonation(opt_pure_intonation);
-    switch(ctl_ncurs_mode)
-    {
-      case NCURS_MODE_MAIN:
-	touchwin(msgwin);
-	wrefresh(msgwin);
-	break;
-      case NCURS_MODE_TRACE:
-	touchwin(dftwin);
-	for(i = 0; i < MAX_CHANNELS; i++)
-	    init_trace_window_chan(i);
-	N_ctl_refresh();
-	break;
-      case NCURS_MODE_HELP:
-	break;
-      case NCURS_MODE_LIST:
-	touchwin(listwin);
-	ctl_list_mode(NC_LIST_NOW);
-	break;
-      case NCURS_MODE_DIR:
-	ctl_cmd_L_dir(0);
-	break;
-    }
+	int i;
+	
+	if (current_file_info != NULL)
+		display_channels = (current_file_info->max_channel / 16) * 16 + 16;
+	else
+		display_channels = LINES - 8;
+	if (display_channels > LINES - 8)
+		display_channels = LINES - 8;
+	display_play_system(play_system_mode);
+	display_intonation(opt_pure_intonation);
+	switch (ctl_ncurs_mode) {
+	case NCURS_MODE_MAIN:
+		touchwin(msgwin);
+		wrefresh(msgwin);
+		break;
+	case NCURS_MODE_TRACE:
+		touchwin(dftwin);
+		for (i = 0; i < MAX_CHANNELS; i++)
+			init_trace_window_chan(i);
+		N_ctl_refresh();
+		break;
+	case NCURS_MODE_HELP:
+		break;
+	case NCURS_MODE_LIST:
+		touchwin(listwin);
+		ctl_list_mode(NC_LIST_NOW);
+		break;
+	case NCURS_MODE_DIR:
+		ctl_cmd_L_dir(0);
+		break;
+	}
 }
 
 static void display_key_helpmsg(void)
@@ -1049,6 +1066,10 @@ static void ctl_event(CtlEvent *e)
 	break;
       case CTLE_PLAY_END:
 	break;
+	case CTLE_CUEPOINT:
+		cuepoint = e->v1;
+		cuepoint_pending = 1;
+		break;
       case CTLE_CURRENT_TIME:
 	ctl_current_time((int)e->v1, (int)e->v2);
 	display_aq_ratio();
@@ -2424,6 +2445,12 @@ static int ctl_read(int32 *valp)
   int c, i;
   static int u_prefix = 1, u_flag = 1;
 
+	if (cuepoint_pending) {
+		*valp = cuepoint;
+		cuepoint_pending = 0;
+		return RC_FORWARD;
+	}
+
   if(ctl_cmdmode)
       mini_buff_refresh(command_buffer);
 
@@ -2863,7 +2890,18 @@ static int ctl_read(int32 *valp)
   return RC_NONE;
 }
 
-#ifdef USE_PDCURSES
+static int ctl_write(char *valp, int32 size)
+{
+  static int warned = 0;
+  if (!warned) {
+    fprintf(stderr, "Warning: using stdout with ncurses interface will not\n"
+		    "give the desired effect.\n");
+    warned = 1;
+  }
+  return write(STDOUT_FILENO, valp, size);
+}
+
+#if defined(USE_PDCURSES) && !defined(HAVE_VWPRINTW)
 static void vwprintw(WINDOW *w, char *fmt, va_list ap)
 {
     char *buff;
@@ -2875,7 +2913,7 @@ static void vwprintw(WINDOW *w, char *fmt, va_list ap)
     waddstr(w, buff);
     reuse_mblock(&pool);
 }
-#endif /* USE_PDCURSES */
+#endif /* defined(USE_PDCURSES) && !defined(HAVE_VWPRINTW) */
 
 static int cmsg(int type, int verbosity_level, char *fmt, ...)
 {
@@ -3100,7 +3138,7 @@ static void shuffle_list(void)
     reuse_mblock(&tmpbuffer);
 }
 
-static void ctl_pass_playing_list(int number_of_files, char *list_of_files[])
+static int ctl_pass_playing_list(int number_of_files, char *list_of_files[])
 {
     int i;
     int act_number_of_files;
@@ -3128,7 +3166,7 @@ static void ctl_pass_playing_list(int number_of_files, char *list_of_files[])
 
     if (file_list.number<0) {
       cmsg(CMSG_FATAL, VERB_NORMAL, "No MIDI file to play!");
-      return;
+      return 1;
     }
 
     ctl_listmode_max=1;
@@ -3169,7 +3207,7 @@ static void ctl_pass_playing_list(int number_of_files, char *list_of_files[])
 		    if(!(ctl.flags & CTLF_LIST_LOOP) || stdin_check)
 		    {
 			aq_flush(0);
-			return;
+			return 0;
 		    }
 		    i = 0;
 		    if(rc == RC_TUNE_END)
@@ -3187,7 +3225,7 @@ static void ctl_pass_playing_list(int number_of_files, char *list_of_files[])
 
 		/* else fall through */
 	    case RC_QUIT:
-		return;
+		return 0;
 	    }
 	  ctl_reset();
 	}
