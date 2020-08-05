@@ -724,10 +724,27 @@ URL url_arc_open(char *name)
     if((afl = find_arc_filelist(base)) == NULL)
 	afl = regist_archive(base);
     if(afl == NULL)
+    {
+	reuse_mblock(&arc_buffer);	/* free `base' */
+
 	return NULL;
-    reuse_mblock(&arc_buffer);	/* free `base' */
+    }
     name += len + 1;
-    while(name[0] == '/') name++;	/* skip '/'s right after # */
+    
+    /* skip path separators right after '#' */
+    for(;;)
+    {
+	if (*name != PATH_SEP
+		#if PATH_SEP != '/'	/* slash is always processed */
+			&& *name != '/'
+		#endif
+		#if defined(PATH_SEP2) && (PATH_SEP2 != '/')
+			&& *name != PATH_SEP2
+		#endif
+		)
+		break;
+	name++;
+    }
 
     for(entry = afl->entry_list; entry; entry = entry->next)
     {
@@ -735,7 +752,10 @@ URL url_arc_open(char *name)
 	    break;
     }
     if(entry == NULL)
+    {
+	reuse_mblock(&arc_buffer);	/* free `base' */
 	return NULL;
+    }
 
     if(entry->cache != NULL)
 	instream = url_mem_open((char *)entry->cache + entry->start,
@@ -743,7 +763,10 @@ URL url_arc_open(char *name)
     else
     {
 	if((instream = url_file_open(base)) == NULL)
+	{
+	    reuse_mblock(&arc_buffer);	/* free `base' */
 	    return NULL;
+	}
 	url_seek(instream, entry->start, 0);
     }
 
@@ -751,6 +774,7 @@ URL url_arc_open(char *name)
     if(url == NULL)
     {
 	url_errno = errno;
+	reuse_mblock(&arc_buffer);	/* free `base' */
 	return NULL;
     }
 
@@ -783,6 +807,7 @@ URL url_arc_open(char *name)
 	if(url->decoder == NULL)
 	{
 	    url_arc_close((URL)url);
+	    reuse_mblock(&arc_buffer);	/* free `base' */
 	    return NULL;
 	}
 	break;
@@ -805,11 +830,13 @@ URL url_arc_open(char *name)
 	if(url->decoder == NULL)
 	{
 	    url_arc_close((URL)url);
+	    reuse_mblock(&arc_buffer);	/* free `base' */
 	    return NULL;
 	}
 	break;
       default:
 	url_arc_close((URL)url);
+	reuse_mblock(&arc_buffer);	/* free `base' */
 	return NULL;
     }
 
@@ -828,6 +855,8 @@ URL url_arc_open(char *name)
     url->pos = 0;
     url->size = entry->origsize;
     url->comptype = entry->comptype;
+    reuse_mblock(&arc_buffer);	/* free `base' */
+
     return (URL)url;
 }
 

@@ -50,6 +50,7 @@
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <netinet/in.h>
+#include <netdb.h>
 #ifndef NO_STRING_H
 #include <string.h>
 #else
@@ -57,11 +58,7 @@
 #endif
 #include <signal.h>
 
-#ifdef HAVE_SYS_SOUNDCARD_H
-#include <sys/soundcard.h>
-#else
 #include "server_defs.h"
-#endif /* HAVE_SYS_SOUNDCARD_H */
 
 #include "timidity.h"
 #include "common.h"
@@ -74,13 +71,13 @@
 #include "aq.h"
 #include "timer.h"
 
+#define SERVER_VERSION "1.0.4"
+
 /* #define DEBUG_DUMP_SEQ 1 */
 #define MIDI_COMMAND_PER_SEC	100
 #define DEFAULT_LOW_TIMEAT	0.4
 #define DEFAULT_HIGH_TIMEAT	0.6
-#define DONT_STOP_AUDIO	1
 #define DEFAULT_TIMEBASE	100 /* HZ? */
-#define MAXTICKDIFF		150
 #define SIG_TIMEOUT_SEC		3
 
 
@@ -97,6 +94,7 @@ static int cmd_time(int argc, char **argv);
 static int cmd_nop(int argc, char **argv);
 static int cmd_autoreduce(int argc, char **argv);
 static int cmd_setbuf(int argc, char **argv);
+static int cmd_protocol(int argc, char **argv);
 
 struct
 {
@@ -152,6 +150,9 @@ struct
     {"SETBUF",
 	"SETBUF low hi\n\tSpecify low/hi sec of buffer queue",
 	3, 3, cmd_setbuf},
+    {"PROTOCOL",
+	"PROTOCOL [sequencer|midi]\n\tSpecify the protocol to use",
+	1, 2, cmd_protocol},
 
     {NULL, NULL, 0, 0, NULL} /* terminate */
 };
@@ -174,9 +175,10 @@ SYNTH [gus|awe]\n\
 static int ctl_open(int using_stdin, int using_stdout);
 static void ctl_close(void);
 static int ctl_read(int32 *valp);
+static int ctl_write(char *buffer, int32 size);
 static int cmsg(int type, int verbosity_level, char *fmt, ...);
 static void ctl_event(CtlEvent *e);
-static void ctl_pass_playing_list(int n, char *args[]);
+static int ctl_pass_playing_list(int n, char *args[]);
 
 /**********************************/
 /* export the interface functions */
@@ -186,12 +188,14 @@ static void ctl_pass_playing_list(int n, char *args[]);
 ControlMode ctl=
 {
     "remote interface", 'r',
+    "server",
     1,0,0,
     0,
     ctl_open,
     ctl_close,
     ctl_pass_playing_list,
     ctl_read,
+    ctl_write,
     cmsg,
     ctl_event
 };
@@ -224,23 +228,23 @@ static int32 sample_cum;
 static int32 curr_event_samples, event_time_offset;
 static int32 curr_tick, tick_offs;
 static double start_time;
-static int tmr_running;
+static int tmr_running, notmr_running;
+enum { PROTO_SEQ, PROTO_MIDI };
+static int proto;
+static int is_system_prefix, rstatus;
+static struct sockaddr_storage control_client;
+static double low_time_at = DEFAULT_LOW_TIMEAT;
+static double high_time_at = DEFAULT_HIGH_TIMEAT;
+static FILE *outfp = NULL;
 
-static int is_system_prefix = 0;
-static struct sockaddr_in control_client;
-static double low_time_at = 0.3;
-static double high_time_at = 0.5;
-static FILE *outfp;
+#define CONTROL_FD_OUT (control_port ? control_fd : STDOUT_FILENO)
 
 /*ARGSUSED*/
 static int ctl_open(int using_stdin, int using_stdout)
 {
     ctl.opened = 1;
     ctl.flags &= ~(CTLF_LIST_RANDOM|CTLF_LIST_SORT);
-    if(using_stdout)
-	outfp = stderr;
-    else
-	outfp = stdout;
+    outfp = stderr;
     return 0;
 }
 
@@ -266,6 +270,18 @@ static int ctl_read(int32 *valp)
     if(data_fd != -1)
 	do_control_command_nonblock();
     return RC_NONE;
+}
+
+static int ctl_write(char *buffer, int32 size)
+{
+    static int warned = 0;
+    if (!warned) {
+	fprintf(stderr, "Warning: STDOUT redirected to data socket\n");
+	warned = 1;
+    }
+    if(data_fd != -1)
+	return send(data_fd, buffer, size, MSG_DONTWAIT);
+    return -1;
 }
 
 static int cmsg(int type, int verbosity_level, char *fmt, ...)
@@ -294,44 +310,82 @@ static void ctl_event(CtlEvent *e)
 
 static int pasv_open(int *port)
 {
-    int sfd;
-    struct sockaddr_in server;
+    int sfd, s;
+    struct addrinfo hints, *result, *rp;
+    char service[NI_MAXSERV];
 
-    if((sfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+    memset(&hints, 0, sizeof(struct addrinfo));
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_PASSIVE;
+
+    snprintf(service, sizeof(service), "%d", *port);
+    
+    s = getaddrinfo(NULL, service, &hints, &result);
+    if (s)
     {
-	perror("socket");
-	return -1;
+        fprintf(stderr, "getaddrinfo %s", gai_strerror(s));
+        return -1;
     }
 
-    memset(&server, 0, sizeof(server));
-    server.sin_port        = htons(*port);
-    server.sin_family      = AF_INET;
-    server.sin_addr.s_addr = htonl(INADDR_ANY);
+    for (rp = result; rp != NULL; rp = rp->ai_next)
+    {
+        if (rp->ai_family != AF_INET && rp->ai_family != AF_INET6)
+             continue;
+
+        sfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+
+        if (sfd == -1)
+            continue;
 
 #ifdef SO_REUSEADDR
-    {
-	int on = 1;
-	setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR, (caddr_t)&on, sizeof(on));
-    }
+        {
+            int on = 1;
+            setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR, (caddr_t)&on, sizeof(on));
+        }
 #endif /* SO_REUSEADDR */
 
-    ctl.cmsg(CMSG_INFO, VERB_DEBUG, "Bind TCP/IP port=%d", *port);
-    if(bind(sfd, (struct sockaddr *)&server, sizeof(server)) < 0)
+        ctl.cmsg(CMSG_INFO, VERB_DEBUG, "Bind TCP/IP port=%d", *port);
+        if (bind(sfd, rp->ai_addr, rp->ai_addrlen) != 0) {
+            perror("bind");
+            close(sfd);
+        } else
+            break;
+
+        close(sfd);
+    }
+
+    if (rp == NULL)
     {
-	perror("bind");
-	close(sfd);
+	fprintf(stderr, "Could not bind\n");
+	freeaddrinfo(result);
 	return -1;
     }
+
+    freeaddrinfo(result);
+
     if(*port == 0)
     {
-	int len = sizeof(server);
+	struct sockaddr_storage server;
+	socklen_t len = sizeof(server);
+
 	if(getsockname(sfd, (struct sockaddr *)&server, &len) < 0)
 	{
 	    perror("getsockname");
 	    close(sfd);
 	    return -1;
 	}
-	*port = ntohs(server.sin_port);
+
+        /* Not quite protocol independent */
+        switch (((struct sockaddr *) &server)->sa_family)
+        {
+            case AF_INET:
+                *port = ntohs(((struct sockaddr_in *) &server)->sin_port);
+                break;
+            case AF_INET6:
+                *port = ntohs(((struct sockaddr_in6 *) &server)->sin6_port);
+                break;
+        }
     }
 
     /* Set it up to wait for connections. */
@@ -356,19 +410,15 @@ static int send_status(int status, char *message, ...);
 static void compute_sample_increment(void);
 static void server_reset(void);
 
-static void ctl_pass_playing_list(int n, char *args[])
+static int ctl_pass_playing_list(int n, char *args[])
 {
-    int sock;
+    int sock = 0;
 
     if(n != 2 && n != 1)
     {
 	fprintf(stderr, "Usage: timidity -ir control-port [data-port]\n");
-	return;
+	return 1;
     }
-
-#ifdef SIGPIPE
-    signal(SIGPIPE, SIG_IGN);    /* Handle broken pipe */
-#endif /* SIGPIPE */
 
     control_port = atoi(args[0]);
     if(n == 2)
@@ -377,9 +427,12 @@ static void ctl_pass_playing_list(int n, char *args[])
 	data_port = 0;
 
     if (control_port) {
+#ifdef SIGPIPE
+	signal(SIGPIPE, SIG_IGN);    /* Handle broken pipe */
+#endif /* SIGPIPE */
 	sock = pasv_open(&control_port);
 	if(sock == -1)
-	    return;
+	    return 1;
     }
     opt_realtime_playing = 1; /* Enable loading patch while playing */
     allocate_cache_size = 0; /* Don't use pre-calclated samples */
@@ -387,10 +440,9 @@ static void ctl_pass_playing_list(int n, char *args[])
     alarm(0);
     signal(SIGALRM, sig_timeout);
 
-    play_mode->close_output();
     while(1)
     {
-	int addrlen;
+	socklen_t addrlen;
 
 	addrlen = sizeof(control_client);
 	memset(&control_client, 0, addrlen);
@@ -404,23 +456,23 @@ static void ctl_pass_playing_list(int n, char *args[])
 		    continue;
 		perror("accept");
 		close(sock);
-		return;
+		return 1;
 	    }
 	}
 	else control_fd = 0;
 
-	if(play_mode->open_output() < 0)
+	if (play_mode->acntl(PM_REQ_PLAY_START, NULL) < 0)
 	{
 	    ctl.cmsg(CMSG_FATAL, VERB_NORMAL,
-		     "Couldn't open %s (`%c')",
+		     "Couldn't start %s (`%c')",
 		     play_mode->id_name, play_mode->id_character);
-	    send_status(510, "Couldn't open %s (`%c')",
+	    send_status(510, "Couldn't start %s (`%c')",
 			play_mode->id_name, play_mode->id_character);
 	    if (control_port) {
 		close(control_fd);
-		control_fd = 1;
+		control_fd = -1;
 	    }
-	    continue;
+	    break;
 	}
 
 	server_reset();
@@ -429,7 +481,7 @@ static void ctl_pass_playing_list(int n, char *args[])
 	doit();
 	ctl.cmsg(CMSG_INFO, VERB_NOISY, "Connection closed");
 
-	play_mode->close_output();
+	play_mode->acntl(PM_REQ_PLAY_END, NULL);
 
 	if(control_fd != -1 && control_port)
 	{
@@ -446,6 +498,7 @@ static void ctl_pass_playing_list(int n, char *args[])
 	if (!control_port)
 	    break;
     }
+    return 0;
 }
 
 #define MAX_GETCMD_PARAMS 8
@@ -468,11 +521,13 @@ static int control_getcmd(char **params, int *nparams)
     }
     if(n == 0)
 	return 1;
-    if((params[0] = strtok(buff, " \t\r\n\240")) == NULL)
-	return 0;
     *nparams = 0;
-    while(params[*nparams] && *nparams < MAX_GETCMD_PARAMS)
-	params[++(*nparams)] = strtok(NULL," \t\r\n\240");
+    do {
+	params[*nparams] = strtok(*nparams ? NULL : buff, " \t\r\n\240");
+	if (!params[*nparams])
+	    break;
+	(*nparams)++;
+    } while (*nparams < MAX_GETCMD_PARAMS);
     return 0;
 }
 
@@ -487,7 +542,7 @@ static int send_status(int status, char *message, ...)
     va_end(ap);
     strncat(buff, "\n", BUFSIZ - strlen(buff) - 1);
     buff[BUFSIZ-1] = '\0';      /* force terminate */
-    if(write(control_fd, buff, strlen(buff)) == -1)
+    if(write(CONTROL_FD_OUT, buff, strlen(buff)) == -1)
 	return -1;
     return 0;
 }
@@ -505,9 +560,8 @@ static void seq_play_event(MidiEvent *ev)
 	}
 	else
 	{
-	    double past_time = get_current_calender_time() - start_time;
-	    if(play_mode->flag & PF_PCM_STREAM)
-		past_time += high_time_at;
+	    double past_time = get_current_calender_time() - start_time -
+		    (double)(curr_event_samples + event_time_offset) / play_mode->rate;
 	    ev->time = (int32)(past_time * play_mode->rate);
 	}
     }
@@ -553,6 +607,7 @@ static void add_tick(int tick)
     seq_play_event(&ev);
 }
 
+#if 0
 static int tick2sample(int tick)
 {
     int32 samples, cum;
@@ -563,6 +618,7 @@ static int tick2sample(int tick)
 	samples += ((sample_cum >> 16) & 0xFFFF);
     return samples;
 }
+#endif
 
 int time2tick(double sec)
 {
@@ -581,6 +637,8 @@ static void stop_playing(void)
 	seq_play_event(&ev);
 	aq_flush(0);
     }
+
+    notmr_running = 0;
 }
 
 static int do_control_command(void);
@@ -592,7 +650,6 @@ static void do_timing(uint8 *);
 static void do_sysex(uint8 *, int len);
 static void do_extended(uint8 *);
 static void do_timeout(void);
-static void server_seq_sync(double tm);
 
 static uint8 data_buffer[BUFSIZ];
 static int data_buffer_len;
@@ -602,9 +659,9 @@ static void doit(void)
     memset(&control_fd_buffer, 0, sizeof(control_fd_buffer));
     control_fd_buffer.fd = control_fd;
 
-    send_status(220, "TiMidity++ %s%s ready",
+    send_status(220, "TiMidity++ %s%s ready (Server Version %s)",
     		(strcmp(timidity_version, "current")) ? "v" : "",
-    		timidity_version);
+    		timidity_version, SERVER_VERSION);
 
 /*    while(data_fd != -1 && control_fd != -1) */
     while(control_fd != -1)
@@ -629,23 +686,20 @@ static void doit(void)
 	    else
 		maxfd = data_fd;
 
-	    if(data_fd != -1)
+	    if(data_fd != -1 && (tmr_running || notmr_running))
 	    {
-		    double wait_time;
-		    int32 filled;
+		    double wait_time, filled;
 
-		    filled = aq_filled();
-		    if(!tmr_running && filled <= 0)
-			usec = -1;
+		    if (IS_STREAM_TRACE)
+			filled = aq_filled();
 		    else
-		    {
-			wait_time = (double)filled / play_mode->rate
-			    - low_time_at;
-			if(wait_time <= 0)
-			    usec = 0;
-			else
-			    usec = (long)(wait_time * 1000000);
-		    }
+			filled = high_time_at * play_mode->rate;
+
+		    wait_time = filled / play_mode->rate - low_time_at;
+		    if(wait_time <= 0)
+			usec = 0;
+		    else
+			usec = (long)(wait_time * 1000000);
 	    }
 	    else
 		usec = -1;
@@ -668,11 +722,6 @@ static void doit(void)
 
 	    if(n == 0)
 	    {
-		if(ctl.verbosity >= VERB_DEBUG)
-		{
-		    putchar(',');
-		    fflush(stdout);
-		}
 		do_timeout();
 		continue;
 	    }
@@ -687,6 +736,7 @@ static void doit(void)
 	    }
 	    else if(data_fd != -1 && FD_ISSET(data_fd, &fds))
 	    {
+		notmr_running = !tmr_running;
 		if(do_sequencer())
 		{
 		    close(data_fd);
@@ -705,10 +755,14 @@ static void do_timeout(void)
 {
     double fill_time;
 
-    if(data_fd == -1 || !IS_STREAM_TRACE)
+    if(data_fd == -1)
 	return;
     aq_add(NULL, 0);
-    fill_time = high_time_at - (double)aq_filled() / play_mode->rate;
+    if (IS_STREAM_TRACE)
+	fill_time = high_time_at - (double)aq_filled() / play_mode->rate;
+    else
+	fill_time = get_current_calender_time() - start_time -
+		(double)(curr_event_samples + event_time_offset) / play_mode->rate;
     if(fill_time <= 0)
 	return;
 
@@ -769,6 +823,7 @@ static int data_flush(int discard)
     return 0;
 }
 
+#if 0
 static void server_seq_sync(double tm)
 {
     double t;
@@ -777,6 +832,7 @@ static void server_seq_sync(double tm)
     if(t > tm)
 	usleep((unsigned long)((t - tm) * 1000000));
 }
+#endif
 
 static void server_reset(void)
 {
@@ -784,14 +840,16 @@ static void server_reset(void)
     if(free_instruments_afterwards)
 	free_instruments(0);
     data_buffer_len = 0;
+    rstatus = 0;
     do_sysex(NULL, 0); /* Initialize SysEx buffer */
     low_time_at = DEFAULT_LOW_TIMEAT;
     high_time_at = DEFAULT_HIGH_TIMEAT;
     reduce_voice_threshold = 0; /* Disable auto reduction voice */
     compute_sample_increment();
     tmr_reset();
-    tmr_running = 0;
+    tmr_running = notmr_running = 0;
     start_time = get_current_calender_time();
+    proto = PROTO_SEQ;
 }
 
 /* -1=error, 0=success, 1=connection-closed */
@@ -799,7 +857,7 @@ static int do_control_command(void)
 {
     int status;
     char *params[MAX_GETCMD_PARAMS];
-    int nparams;
+    int nparams = 0;
     int i;
 
     if((status = control_getcmd(params, &nparams)) == -1)
@@ -836,19 +894,19 @@ static int cmd_help(int argc, char **argv)
 
     for(i = 0; cmd_table[i].cmd; i++)
     {
-	if(fdputs(cmd_table[i].help, control_fd))
+	if(fdputs(cmd_table[i].help, CONTROL_FD_OUT))
 	    return -1;
-	if(fdputs("\n", control_fd))
+	if(fdputs("\n", CONTROL_FD_OUT))
 	    return -1;
     }
-    return fdputs(".\n", control_fd);
+    return fdputs(".\n", CONTROL_FD_OUT);
 }
 
 static int cmd_open(int argc, char **argv)
 {
     int sock;
-    struct sockaddr_in in;
-    int addrlen;
+    struct sockaddr_storage in;
+    socklen_t addrlen;
     int port;
 
     if(data_fd != -1)
@@ -881,13 +939,35 @@ static int cmd_open(int argc, char **argv)
     }
     close(sock);
 
-    if(control_client.sin_addr.s_addr != in.sin_addr.s_addr)
-	return send_status(513, "Security violation:  Address mismatch");
+     /* Not quite protocol independent */
+     if(control_port) switch (((struct sockaddr *) &control_client)->sa_family)
+     {
+         case AF_INET:
+            if (((struct sockaddr_in *) &control_client)->sin_addr.s_addr !=
+                ((struct sockaddr_in *) &in)->sin_addr.s_addr)
+            {
+              close(data_fd);
+              data_fd = -1;
+              return send_status(513, "Security violation: Address mismatch" );
+            }
+            break;
+         case AF_INET6:
+            if (memcmp(
+                ((struct sockaddr_in6 *) &control_client)->sin6_addr.s6_addr,
+                ((struct sockaddr_in6 *) &in)->sin6_addr.s6_addr, 16))
+            {
+              close(data_fd);
+              data_fd = -1;
+              return send_status(513, "Security violation: Address mismatch" );
+            }
+            break;
+     }
 
-    send_status(200, "Ready data connection");
+
     data_buffer_len = 0;
     do_sysex(NULL, 0); /* Initialize SysEx buffer */
     tmr_reset();
+    send_status(200, "Ready data connection");
 
     return 0;
 }
@@ -1007,8 +1087,23 @@ static int cmd_autoreduce(int argc, char **argv)
 static int cmd_setbuf(int argc, char **argv)
 {
     low_time_at = atof(argv[1]);
-    high_time_at = atof(argv[1]);
+    high_time_at = atof(argv[2]);
     return send_status(200, "OK");
+}
+
+static int cmd_protocol(int argc, char **argv)
+{
+    if (argc < 2)
+	return send_status(200, "Current protocol is %s",
+		proto == PROTO_SEQ ? "sequencer" : "midi");
+    if (strcasecmp(argv[1], "sequencer") == 0)
+	proto = PROTO_SEQ;
+    else if (strcasecmp(argv[1], "midi") == 0)
+	proto = PROTO_MIDI;
+    else return send_status(500, "Invalid protocol name %s", argv[1]);
+
+    return send_status(200, "Protocol set to %s",
+	    proto == PROTO_SEQ ? "sequencer" : "midi");
 }
 
 static int cmd_nop(int argc, char **argv)
@@ -1036,7 +1131,7 @@ static int do_control_command_nonblock(void)
 
 static int fdgets(char *buff, size_t buff_size, struct fd_read_buffer *p)
 {
-    int n, len, count, size, fd;
+    int n, count, size, fd;
     char *buff_endp = buff + buff_size - 1, *pbuff, *beg;
 
     fd = p->fd;
@@ -1048,7 +1143,6 @@ static int fdgets(char *buff, size_t buff_size, struct fd_read_buffer *p)
 	return 0;
     }
 
-    len = 0;
     count = p->count;
     size = p->size;
     pbuff = p->buff;
@@ -1122,7 +1216,8 @@ static uint16 data2short(uint8* data)
 
 static int do_sequencer(void)
 {
-    int n, offset;
+    int n, offset, frame_size, data_offs, data_frame_num;
+    unsigned char status;
     MidiEvent ev;
 
     n = read(data_fd, data_buffer + data_buffer_len,
@@ -1138,20 +1233,21 @@ static int do_sequencer(void)
     {
 	int i;
 	for(i = 0; i < n; i++)
-	    printf("%02x", data_buffer[data_buffer_len + i]);
-	putchar('\n');
+	    fprintf(stderr, "%02x", data_buffer[data_buffer_len + i]);
+	fprintf(stderr, "\n");
     }
 #endif /* DEBUG_DUMP_SEQ */
 
     data_buffer_len += n;
     offset = 0;
+    frame_size = (proto == PROTO_SEQ ? 4 : 1);
     while(offset < data_buffer_len)
     {
 	int cmd;
-	cmd = data_buffer[offset];
+	cmd = (proto == PROTO_SEQ ? data_buffer[offset] : SEQ_MIDIPUTC);
 
-#define READ_NEEDBUF(x) if(offset + x > data_buffer_len) goto done;
-#define READ_ADVBUF(x)  offset += x;
+#define READ_NEEDBUF(x) if(offset + (x) > data_buffer_len) goto done;
+#define READ_ADVBUF(x)  offset += (x);
 	switch(cmd)
 	{
 	  case EV_CHN_VOICE:
@@ -1175,106 +1271,215 @@ static int do_sequencer(void)
 	    READ_ADVBUF(8);
 	    break;
 	  case SEQ_MIDIPUTC:
+	    READ_NEEDBUF(proto == PROTO_SEQ ? 2 : 1);
+	    data_offs = (proto == PROTO_SEQ ? 1 : 0);
+	    data_frame_num = 0;
+
 	    if(is_system_prefix)
 	    {
-		READ_NEEDBUF(4);
-		do_sysex(data_buffer + offset + 1, 1);
-		if(data_buffer[offset + 1] == 0xf7)
+		READ_NEEDBUF(frame_size);
+		do_sysex(data_buffer + offset + data_offs, 1);
+		if(data_buffer[offset + data_offs] == 0xf7)
 		    is_system_prefix = 0;  /* End SysEX */
-		READ_ADVBUF(4);
+		READ_ADVBUF(frame_size);
 		break;
 	    }
-	    READ_NEEDBUF(2);
-	    switch(data_buffer[offset + 1] & 0xf0)
+
+	    status = data_buffer[offset + data_offs];
+	    if (status & 0x80) {
+		/* data bytes follows status byte */
+		data_frame_num++;
+	    } else {
+		/* use "running status" */
+		status = rstatus;
+		if (!(status & 0x80)) {
+		    /* no status byte, skip this crap */
+		    READ_NEEDBUF(frame_size);
+	    	    ctl.cmsg(CMSG_INFO, VERB_NORMAL, "no status byte for %#x, skipping",
+			    data_buffer[offset + data_offs]);
+		    READ_ADVBUF(frame_size);
+		    break;
+		}
+	    }
+#define DATA_BYTE(num) (data_buffer[offset + data_offs + \
+    ((num) + data_frame_num) * frame_size])
+	    switch(status & 0xf0)
 	    {
 	      case MIDI_NOTEON:
-		READ_NEEDBUF(12);
-		ev.channel = data_buffer[offset + 1] & 0x0f;
-		ev.a       = data_buffer[offset + 5] & 0x7f;
-		ev.b       = data_buffer[offset + 9] & 0x7f;
+		READ_NEEDBUF((data_frame_num + 2) * frame_size);
+		ev.channel = status & 0x0f;
+		ev.a       = DATA_BYTE(0) & 0x7f;
+		ev.b       = DATA_BYTE(1) & 0x7f;
 		if(ev.b != 0)
 		    ev.type = ME_NOTEON;
 		else
 		    ev.type = ME_NOTEOFF;
 		seq_play_event(&ev);
-		READ_ADVBUF(12);
+		READ_ADVBUF((data_frame_num + 2) * frame_size);
 		break;
 
 	      case MIDI_NOTEOFF:
-		READ_NEEDBUF(12);
+		READ_NEEDBUF((data_frame_num + 2) * frame_size);
 		ev.type    = ME_NOTEOFF;
-		ev.channel = data_buffer[offset + 1] & 0x0f;
-		ev.a       = data_buffer[offset + 5] & 0x7f;
-		ev.b       = data_buffer[offset + 9] & 0x7f;
+		ev.channel = status & 0x0f;
+		ev.a       = DATA_BYTE(0) & 0x7f;
+		ev.b       = DATA_BYTE(1) & 0x7f;
 		seq_play_event(&ev);
-		READ_ADVBUF(12);
+		READ_ADVBUF((data_frame_num + 2) * frame_size);
 		break;
 
 	      case MIDI_KEY_PRESSURE:
-		READ_NEEDBUF(12);
+		READ_NEEDBUF((data_frame_num + 2) * frame_size);
 		ev.type    = ME_KEYPRESSURE;
-		ev.channel = data_buffer[offset + 1] & 0x0f;
-		ev.a       = data_buffer[offset + 5] & 0x7f;
-		ev.b       = data_buffer[offset + 9] & 0x7f;
+		ev.channel = status & 0x0f;
+		ev.a       = DATA_BYTE(0) & 0x7f;
+		ev.b       = DATA_BYTE(1) & 0x7f;
 		seq_play_event(&ev);
-		READ_ADVBUF(12);
+		READ_ADVBUF((data_frame_num + 2) * frame_size);
 		break;
 
 	      case MIDI_CTL_CHANGE:
-		READ_NEEDBUF(12);
-		if(convert_midi_control_change(data_buffer[offset + 1] & 0x0f,
-					       data_buffer[offset + 5],
-					       data_buffer[offset + 9],
+		READ_NEEDBUF((data_frame_num + 2) * frame_size);
+		if(convert_midi_control_change(status & 0x0f,
+					       DATA_BYTE(0),
+					       DATA_BYTE(1),
 					       &ev))
 		    seq_play_event(&ev);
-		READ_ADVBUF(12);
+		READ_ADVBUF((data_frame_num + 2) * frame_size);
 		break;
 
 	      case MIDI_PGM_CHANGE:
-		READ_NEEDBUF(8);
+		READ_NEEDBUF((data_frame_num + 1) * frame_size);
 		ev.type    = ME_PROGRAM;
-		ev.channel = data_buffer[offset + 1] & 0x0f;
-		ev.a       = data_buffer[offset + 5] & 0x7f;
+		ev.channel = status & 0x0f;
+		ev.a       = DATA_BYTE(0) & 0x7f;
 		ev.b       = 0;
 		seq_play_event(&ev);
-		READ_ADVBUF(8);
+		READ_ADVBUF((data_frame_num + 1) * frame_size);
 		break;
 
 	      case MIDI_CHN_PRESSURE:
-		READ_NEEDBUF(8);
+		READ_NEEDBUF((data_frame_num + 1) * frame_size);
 		ev.type    = ME_CHANNEL_PRESSURE;
-		ev.channel = data_buffer[offset + 1] & 0x0f;
-		ev.a       = data_buffer[offset + 5] & 0x7f;
+		ev.channel = status & 0x0f;
+		ev.a       = DATA_BYTE(0) & 0x7f;
 		ev.b       = 0;
 		seq_play_event(&ev);
-		READ_ADVBUF(8);
+		READ_ADVBUF((data_frame_num + 1) * frame_size);
 		break;
 
 	      case MIDI_PITCH_BEND:
-		READ_NEEDBUF(12);
+		READ_NEEDBUF((data_frame_num + 2) * frame_size);
 		ev.type    = ME_PITCHWHEEL;
-		ev.channel = data_buffer[offset + 1] & 0x0f;
-		ev.a       = data_buffer[offset + 5] & 0x7f;
-		ev.b       = data_buffer[offset + 9] & 0x7f;
+		ev.channel = status & 0x0f;
+		ev.a       = DATA_BYTE(0) & 0x7f;
+		ev.b       = DATA_BYTE(1) & 0x7f;
 		seq_play_event(&ev);
-		READ_ADVBUF(12);
+		READ_ADVBUF((data_frame_num + 2) * frame_size);
 		break;
 
 	      case MIDI_SYSTEM_PREFIX:
-		READ_NEEDBUF(4);
-		do_sysex(data_buffer + offset + 1, 1);
-		is_system_prefix = 1; /* Start SysEX */
-		READ_ADVBUF(4);
+	        switch (status & 0x0f) {
+	          /* Common System Messages */
+	          case 0x00:		/* SysEx */
+		    READ_NEEDBUF(frame_size);
+		    do_sysex(data_buffer + offset + data_offs, 1);
+		    is_system_prefix = 1; /* Start SysEX */
+		    READ_ADVBUF(frame_size);
+		    break;
+
+		  case 0x01:		/* Quarter Frame */
+		    READ_NEEDBUF(frame_size * 2);
+		    READ_ADVBUF(frame_size * 2);
+		    break;
+
+		  case 0x02:		/* Song Position */
+		    READ_NEEDBUF(frame_size * 3);
+		    READ_ADVBUF(frame_size * 3);
+		    break;
+
+		  case 0x03:		/* Song Select */
+		    READ_NEEDBUF(frame_size * 2);
+		    READ_ADVBUF(frame_size * 2);
+		    break;
+
+		  case 0x04:
+		  case 0x05:		/* Undef */
+		    ctl.cmsg(CMSG_ERROR, VERB_NORMAL,
+			"Undefined Common system message %x\n", status & 0x0f);
+		    READ_NEEDBUF(frame_size);
+		    READ_ADVBUF(frame_size);
+		    break;
+
+		  case 0x06:		/* Tune Request */
+		    READ_NEEDBUF(frame_size);
+		    READ_ADVBUF(frame_size);
+		    break;
+
+		  case 0x07:		/* EOX */
+		    ctl.cmsg(CMSG_ERROR, VERB_NORMAL, "Unexpected EOX\n");
+		    READ_NEEDBUF(frame_size);
+		    READ_ADVBUF(frame_size);
+		    break;
+
+		  /* System Real Time Messages */
+		  case 0x08:		/* MIDI Clock */
+		    READ_NEEDBUF(frame_size);
+		    READ_ADVBUF(frame_size);
+		    break;
+
+		  case 0x09:		/* MIDI Tick */
+		    READ_NEEDBUF(frame_size);
+		    READ_ADVBUF(frame_size);
+		    break;
+
+		  case 0x0A:		/* MIDI Start */
+		    READ_NEEDBUF(frame_size);
+		    READ_ADVBUF(frame_size);
+		    break;
+
+		  case 0x0B:		/* MIDI Continue */
+		    READ_NEEDBUF(frame_size);
+		    READ_ADVBUF(frame_size);
+		    break;
+
+		  case 0x0C:		/* MIDI Stop */
+		    READ_NEEDBUF(frame_size);
+		    stop_playing();
+		    READ_ADVBUF(frame_size);
+		    break;
+
+		  case 0x0D:		/* Undef */
+		    ctl.cmsg(CMSG_ERROR, VERB_NORMAL,
+			"Undefined Real-Time system message %x\n", status & 0x0f);
+		    READ_NEEDBUF(frame_size);
+		    READ_ADVBUF(frame_size);
+		    break;
+
+		  case 0x0E:		/* Active Sensing */
+		    READ_NEEDBUF(frame_size);
+		    READ_ADVBUF(frame_size);
+		    break;
+
+		  case 0x0F:		/* Reset */
+		    ctl.cmsg(CMSG_ERROR, VERB_NORMAL, "MIDI Reset\n");
+		    READ_NEEDBUF(frame_size);
+		    tmr_reset();
+		    READ_ADVBUF(frame_size);
+		    break;
+		}
+		status = 0;
 		break;
 
 	      default:
 		ctl.cmsg(CMSG_ERROR, VERB_NORMAL,
 			 "Undefined SEQ_MIDIPUTC 0x%02x",
-			 data_buffer[offset + 1]);
+			 data_buffer[offset + data_offs]);
 		send_status(402, "Undefined SEQ_MIDIPUTC 0x%02x",
-			    data_buffer[offset + 1]);
+			    data_buffer[offset + data_offs]);
 		return 1;
 	    }
+    	    rstatus = status;
 	    break;
 
 	  case SEQ_FULLSIZE:
@@ -1307,6 +1512,7 @@ static int do_sequencer(void)
 	}
 #undef READ_NEEDBUF
 #undef READ_ADVBUF
+#undef DATA_BYTE
     }
 
   done:
@@ -1480,7 +1686,7 @@ static void do_timing(uint8 *data)
       case TMR_WAIT_ABS:
 
 /*
-   printf("## TMR_WAIT_ABS: %d %d %d %g\n",
+   fprintf(stderr, "## TMR_WAIT_ABS: %d %d %d %g\n",
        curr_tick,
        curr_tick - (time2tick(get_current_calender_time()
 			      - start_time) + tick_offs),
@@ -1501,7 +1707,7 @@ static void do_timing(uint8 *data)
       case TMR_SPP:
 #endif
       default:
-/* printf("## TMR=0x%02x is not supported\n", data[1]); */
+/* fprintf(stderr, "## TMR=0x%02x is not supported\n", data[1]); */
 	break;
     }
 }

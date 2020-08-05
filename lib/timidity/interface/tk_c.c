@@ -1,6 +1,6 @@
 /*
     TiMidity++ -- MIDI to WAVE converter and player
-    Copyright (C) 1999-2002 Masanao Izumo <mo@goice.co.jp>
+    Copyright (C) 1999-2004 Masanao Izumo <iz@onicos.co.jp>
     Copyright (C) 1995 Tuukka Toivonen <tt@cgs.fi>
 
     This program is free software; you can redistribute it and/or modify
@@ -15,22 +15,18 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
+    The Tcl/Tk interface for Timidity
+    written by Takashi Iwai (iwai@dragon.mm.t.u-tokyo.ac.jp)
+
+    Most of the following codes are derived from both motif_ctl.c
+    and motif_pipe.c.  The communication between Tk program and
+    timidity is established by a pipe stream as in Motif interface.
+    On the contrast to motif, the stdin and stdout are assigned
+    as pipe i/o in Tk interface.
 */
 
-/*================================================================
- *
- * The Tcl/Tk interface for Timidity
- * written by Takashi Iwai (iwai@dragon.mm.t.u-tokyo.ac.jp)
- *
- * Most of the following codes are derived from both motif_ctl.c
- * and motif_pipe.c.  The communication between Tk program and
- * timidity is established by a pipe stream as in Motif interface.
- * On the contrast to motif, the stdin and stdout are assigned
- * as pipe i/o in Tk interface.
- *
- *================================================================*/
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -50,8 +46,6 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <sys/sem.h>
-#include <tcl.h>
-#include <tk.h>
 #include <sys/wait.h>
 
 #include "timidity.h"
@@ -64,10 +58,16 @@
 #include "miditrace.h"
 #include "aq.h"
 
+#include <tcl.h>
+#include <tk.h>
+
 #ifndef TKPROGPATH
 #define TKPROGPATH PKGLIBDIR "/tkmidity.tcl"
 #endif /* TKPROGPATH */
 
+#if (TCL_MAJOR_VERSION < 8)
+#define Tcl_GetStringResult(interp) (interp->result)
+#endif
 
 static void ctl_refresh(void);
 static void ctl_total_time(int tt);
@@ -86,7 +86,7 @@ static int ctl_open(int using_stdin, int using_stdout);
 static void ctl_close(void);
 static int ctl_read(int32 *valp);
 static int cmsg(int type, int verbosity_level, char *fmt, ...);
-static void ctl_pass_playing_list(int number_of_files, char *list_of_files[]);
+static int ctl_pass_playing_list(int number_of_files, char *list_of_files[]);
 static int ctl_blocking_read(int32 *valp);
 static void ctl_note(int status, int ch, int note, int vel);
 static void ctl_event(CtlEvent *e);
@@ -120,7 +120,7 @@ static void shm_free(int sig);
 
 static void start_panel(void);
 
-#define MAX_TK_MIDI_CHANNELS	16
+#define MAX_TK_MIDI_CHANNELS	32
 
 typedef struct {
 	int reset_panel;
@@ -146,15 +146,20 @@ typedef struct {
 ControlMode ctl=
 {
     "Tcl/Tk interface", 'k',
+    "tcltk",
     1,0,0,
     0,
     ctl_open,
     ctl_close,
     ctl_pass_playing_list,
     ctl_read,
+    NULL,
     cmsg,
     ctl_event
 };
+
+static uint32 cuepoint = 0;
+static int cuepoint_pending = 0;
 
 #define FLAG_NOTE_OFF	1
 #define FLAG_NOTE_ON	2
@@ -578,6 +583,12 @@ static int ctl_read(int32 *valp)
 {
 	int num;
 
+	if (cuepoint_pending) {
+		*valp = cuepoint;
+		cuepoint_pending = 0;
+		return RC_FORWARD;
+	}
+
 	/* We don't wan't to lock on reading  */
 	num=k_pipe_read_ready();
 
@@ -587,7 +598,7 @@ static int ctl_read(int32 *valp)
 	return(ctl_blocking_read(valp));
 }
 
-static void ctl_pass_playing_list(int number_of_files, char *list_of_files[])
+static int ctl_pass_playing_list(int number_of_files, char *list_of_files[])
 {
 	int i=0;
 	char local[1000];
@@ -618,7 +629,7 @@ static void ctl_pass_playing_list(int number_of_files, char *list_of_files[])
 				/* if really QUIT */
 				k_pipe_gets(local, sizeof(local)-1);
 				if (*local == 'Z')
-					return;
+					return 0;
 				/* only stop playing..*/
 			}
 			if (command==RC_CHANGE_VOLUME) /* init volume */
@@ -646,6 +657,7 @@ static void ctl_pass_playing_list(int number_of_files, char *list_of_files[])
 			command = ctl_blocking_read(&val);
 		}
 	}
+	return 0;
 }
 
 
@@ -758,8 +770,8 @@ static void k_pipe_puts(char *str)
 	int len;
 	char lf = '\n';
 	len = line_strlen(str);
-	write(fpip_out, str, len);
-	write(fpip_out, &lf, 1);
+	ssize_t dummy = write(fpip_out, str, len);
+	dummy = write(fpip_out, &lf, 1);
 }
 
 
@@ -772,7 +784,8 @@ int k_pipe_gets(char *str, int maxlen)
 	/* at least 5 letters (4+\n) command */
 	len = 0;
 	for (p = str; len < maxlen - 1; p++) {
-		read(fpip_in, p, 1);
+		ssize_t dummy = read(fpip_in, p, 1);
+		dummy += 1;
 		if (*p == '\n')
 			break;
 		len++;
@@ -871,6 +884,21 @@ static Tcl_Interp *my_interp;
 
 static int AppInit(Tcl_Interp *interp)
 {
+#include "bitmaps/back.xbm"
+#include "bitmaps/fwrd.xbm"
+#include "bitmaps/next.xbm"
+#include "bitmaps/pause.xbm"
+#include "bitmaps/play.xbm"
+#include "bitmaps/prev.xbm"
+#include "bitmaps/quit.xbm"
+#include "bitmaps/stop.xbm"
+#include "bitmaps/timidity.xbm"
+
+#define DefineBitmap(Bitmap) do { \
+	Tk_DefineBitmap (interp, Tk_GetUid(#Bitmap), Bitmap##_bits, \
+			 Bitmap##_width, Bitmap##_height); \
+	} while(0)
+
 	my_interp = interp;
 
 	if (Tcl_Init(interp) == TCL_ERROR) {
@@ -890,7 +918,19 @@ static int AppInit(Tcl_Interp *interp)
 			  (ClientData)NULL, (Tcl_CmdDeleteProc*)NULL);
 	Tcl_CreateCommand(interp, "TraceUpdate", (Tcl_CmdProc*) TraceUpdate,
 			  (ClientData)NULL, (Tcl_CmdDeleteProc*)NULL);
+
+	DefineBitmap(back);
+	DefineBitmap(fwrd);
+	DefineBitmap(next);
+	DefineBitmap(pause);
+	DefineBitmap(play);
+	DefineBitmap(prev);
+	DefineBitmap(quit);
+	DefineBitmap(stop);
+	DefineBitmap(timidity);
+
 	return TCL_OK;
+#undef DefineBitmap
 }
 
 /*ARGSUSED*/
@@ -905,7 +945,7 @@ static int ExitAll(ClientData clientData, Tcl_Interp *interp,
 }
 
 /* evaluate Tcl script */
-static char *v_eval(char *fmt, ...)
+static const char *v_eval(char *fmt, ...)
 {
 	char buf[256];
 	va_list ap;
@@ -913,7 +953,7 @@ static char *v_eval(char *fmt, ...)
 	vsnprintf(buf, sizeof(buf), fmt, ap);
 	Tcl_Eval(my_interp, buf);
 	va_end(ap);
-	return my_interp->result;
+	return Tcl_GetStringResult(my_interp);
 }
 
 static const char *v_get2(const char *v1, const char *v2)
@@ -1144,6 +1184,10 @@ static void ctl_event(CtlEvent *e)
 	break;
       case CTLE_PLAY_END:
 	break;
+	case CTLE_CUEPOINT:
+		cuepoint = e->v1;
+		cuepoint_pending = 1;
+		break;
       case CTLE_TEMPO:
 	break;
       case CTLE_METRONOME:

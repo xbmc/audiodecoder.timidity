@@ -7,16 +7,22 @@
 dnl AM_PATH_ESD([MINIMUM-VERSION, [ACTION-IF-FOUND [, ACTION-IF-NOT-FOUND]]])
 dnl Test for ESD, and define ESD_CFLAGS and ESD_LIBS
 dnl
-AC_DEFUN(AM_PATH_ESD,
+AC_DEFUN([AM_PATH_ESD],
 [dnl 
 dnl Get the cflags and libraries from the esd-config script
 dnl
-AC_ARG_WITH(esd-prefix,[  --with-esd-prefix=PFX   Prefix where ESD is installed (optional)],
-            esd_prefix="$withval", esd_prefix="")
-AC_ARG_WITH(esd-exec-prefix,[  --with-esd-exec-prefix=PFX Exec prefix where ESD is installed (optional)],
-            esd_exec_prefix="$withval", esd_exec_prefix="")
-AC_ARG_ENABLE(esdtest, [  --disable-esdtest       Do not try to compile and run a test ESD program],
-		    , enable_esdtest=yes)
+AC_ARG_WITH(esd-prefix,
+	    AS_HELP_STRING([--with-esd-prefix=PFX],
+	    		   [Prefix where ESD is installed (optional)]),
+            [esd_prefix="$withval"], [esd_prefix=""])
+AC_ARG_WITH(esd-exec-prefix,
+	    AS_HELP_STRING([--with-esd-exec-prefix=PFX],
+	    		   [Exec prefix where ESD is installed (optional)]),
+            [esd_exec_prefix="$withval"], [esd_exec_prefix=""])
+AC_ARG_ENABLE(esdtest,
+	      AS_HELP_STRING([--disable-esdtest],
+	      		     [Do not try to compile and run a test ESD program]),
+		    , [enable_esdtest=yes])
 
   if test x$esd_exec_prefix != x ; then
      esd_args="$esd_args --exec-prefix=$esd_exec_prefix"
@@ -172,7 +178,7 @@ int main ()
 dnl AM_ESD_SUPPORTS_MULTIPLE_RECORD([ACTION-IF-SUPPORTS [, ACTION-IF-NOT-SUPPORTS]])
 dnl Test, whether esd supports multiple recording clients (version >=0.2.21)
 dnl
-AC_DEFUN(AM_ESD_SUPPORTS_MULTIPLE_RECORD,
+AC_DEFUN([AM_ESD_SUPPORTS_MULTIPLE_RECORD],
 [dnl
   AC_MSG_NOTICE([whether installed esd version supports multiple recording clients])
   ac_save_ESD_CFLAGS="$ESD_CFLAGS"

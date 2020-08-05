@@ -20,7 +20,7 @@
 
 /*==============================================================================
 
-  $Id: unimod.h,v 1.35 1999/10/25 16:31:41 miod Exp $
+  $Id$
 
   MikMod sound library include file
 
@@ -44,7 +44,16 @@ extern "C"
 
 #ifdef __W32__
 #define WIN32_LEAN_AND_MEAN
+#if defined(__POCC__) && defined(RC_NONE)
+#undef RC_NONE
+#endif
 #include <windows.h>
+#ifdef __POCC__
+#ifdef RC_NONE
+#undef RC_NONE
+#endif
+#define RC_NONE 0
+#endif
 #include <io.h>
 #elif defined(__OS2__)||defined(__EMX__)
 #define INCL_DOSSEMAPHORES
@@ -53,7 +62,7 @@ extern "C"
 typedef char CHAR;
 #endif
 
-#if defined(__alpha)
+#if defined(__alpha) || defined(_LP64) || defined (__LP64__)
 /* 64 bit architectures */
 
 typedef signed char SBYTE;	/* 1 byte, signed */
@@ -427,6 +436,10 @@ typedef struct INSTRUMENT
 }
 INSTRUMENT;
 
+#define UF_MAXCHAN	64
+#define UF_MAXMACRO	0x10
+#define UF_MAXFILTER	0x100
+
 /* Module flags */
 #define UF_XMPERIODS 0x0001	/* XM periods / finetuning */
 #define UF_LINEAR    0x0002	/* LINEAR periods (UF_XMPERIODS must be set) */
@@ -461,8 +474,8 @@ typedef struct MODULE
   UBYTE initspeed;		/* initial song speed */
   UWORD inittempo;		/* initial song tempo */
   UBYTE initvolume;		/* initial global volume (0 - 128) */
-  UWORD panning[64];	/* 64 panning positions */
-  UBYTE chanvol[64];	/* 64 channel positions */
+  UWORD panning[UF_MAXCHAN];	/* 64 panning positions */
+  UBYTE chanvol[UF_MAXCHAN];	/* 64 channel positions */
   UWORD bpm;		/* current beats-per-minute speed */
 
   /* internal module representation */

@@ -21,6 +21,9 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif /* HAVE_CONFIG_H */
+#ifdef __POCC__
+#include <sys/types.h>
+#endif /* for off_t */
 #include <stdio.h>
 #include <stdlib.h>
 #ifndef NO_STRING_H
@@ -86,7 +89,7 @@ static int name_ftp_check(char *s)
 static int ftp_cmd(URL_ftp *url, char *buff, char *rspns)
 {
 #ifdef DEBUG
-    printf("FTP<%s", buff);
+    fprintf(stderr, "FTP<%s", buff);
 #endif
     errno = 0;
     if(socket_fwrite(buff, (long)strlen(buff), url->ctlofp) <= 0)
@@ -112,7 +115,7 @@ static int ftp_cmd(URL_ftp *url, char *buff, char *rspns)
 	    return -1;
 	}
 #ifdef DEBUG
-	printf("FTP>%s", buff);
+	fprintf(stderr, "FTP>%s", buff);
 #endif
 	if(strncmp(buff, rspns, 3) != 0)
 	{
@@ -161,7 +164,7 @@ URL url_ftp_open(char *name)
     char *user;
 
 #ifdef DEBUG
-    printf("url_ftp_open(%s)\n", name);
+    fprintf(stderr, "url_ftp_open(%s)\n", name);
 #endif /* DEBUG */
 
     passwd = user_mailaddr;
@@ -234,8 +237,16 @@ URL url_ftp_open(char *name)
 		*passwd++ = '\0';
 	}
 
+        if (host[0] == '[')
+        {
+            if (!(p = strchr(host, ']')))
+                return NULL;
+            *p = '\0';
+            ++host;
+        } 
+
 #ifdef DEBUG
-	printf("open(host=`%s', port=`%d')\n", host, port);
+	fprintf(stderr, "open(host=`%s', port=`%d')\n", host, port);
 #endif /* DEBUG */
 
 #ifdef __W32__
@@ -392,13 +403,13 @@ URL url_ftp_open(char *name)
 	socket_fflush(url->ctlofp);
 
 #ifdef DEBUG
-	printf("FTP>RETR %s\r\n", path);
+	fprintf(stderr, "FTP>RETR %s\r\n", path);
 #endif /* DEBUG */
     }
 
     /* Open data connection. */
 #ifdef DEBUG
-    printf("open(host=`%s', port=`%d')\n", host, port);
+    fprintf(stderr, "open(host=`%s', port=`%d')\n", host, port);
 #endif /* DEBUG */
 
     if((fd = open_socket(host, port)) < 0)
@@ -425,7 +436,7 @@ URL url_ftp_open(char *name)
 	sprintf(buff, "GET %s HTTP/1.0\r\n", name);
 	socket_write(fd, buff, (long)strlen(buff));
 #ifdef DEBUG
-	printf("FTP<%s", buff);
+	fprintf(stderr, "FTP<%s", buff);
 #endif /* DEBUG */
 
 	if(url_user_agent)
@@ -433,7 +444,7 @@ URL url_ftp_open(char *name)
 	    sprintf(buff, "User-Agent: %s\r\n", url_user_agent);
 	    socket_write(fd, buff, (long)strlen(buff));
 #ifdef DEBUG
-	    printf("FTP<%s", buff);
+	    fprintf(stderr, "FTP<%s", buff);
 #endif /* DEBUG */
 	}
 	socket_write(fd, "\r\n", 2);
@@ -447,7 +458,7 @@ URL url_ftp_open(char *name)
 	    return NULL;
 	}
 #ifdef DEBUG
-	printf("FTP>%s", buff);
+	fprintf(stderr, "FTP>%s", buff);
 #endif /* DEBUG */
 
 	p = buff;
@@ -466,7 +477,7 @@ URL url_ftp_open(char *name)
 	    if(buff[0] == '\n' || (buff[0] == '\r' && buff[1] == '\n'))
 		break; /* end of heaer */
 #ifdef DEBUG
-	    printf("FTP>%s", buff);
+	    fprintf(stderr, "FTP>%s", buff);
 #endif /* DEBUG */
 	}
     }
@@ -481,7 +492,7 @@ URL url_ftp_open(char *name)
 	}
 
 #ifdef DEBUG
-	printf("FTP<%s", buff);
+	fprintf(stderr, "FTP<%s", buff);
 #endif /* DEBUG */
 
 	if(strncmp(buff, "150", 3) != 0)

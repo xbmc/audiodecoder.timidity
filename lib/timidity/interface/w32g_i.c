@@ -1,6 +1,6 @@
 /*
     TiMidity++ -- MIDI to WAVE converter and player
-    Copyright (C) 1999-2004 Masanao Izumo <iz@onicos.co.jp>
+    Copyright (C) 1999-2018 Masanao Izumo <iz@onicos.co.jp>
     Copyright (C) 1995 Tuukka Toivonen <tt@cgs.fi>
 
     This program is free software; you can redistribute it and/or modify
@@ -60,7 +60,6 @@ int WINAPI timeKillEvent(UINT uTimerID);
 			 * Edit_* and ListBox_* are defined in
 			 * <windowsx.h>
 			 */
-
 #include "timidity.h"
 #include "common.h"
 #include "instrum.h"
@@ -140,8 +139,7 @@ HINSTANCE hInst;
 static int progress_jump = -1;
 static HWND hMainWndScrollbarProgressWnd;
 static HWND hMainWndScrollbarVolumeWnd;
-// #define W32G_VOLUME_MAX 200
-#define W32G_VOLUME_MAX MAX_AMPLIFICATION
+#define W32G_VOLUME_MAX 200
 
 // HWND
 HWND hMainWnd = 0;
@@ -236,7 +234,7 @@ int AutosavePlaylist = 0;
 int volatile save_playlist_once_before_exit_flag = 1;
 
 static volatile int w32g_wait_for_init;
-void w32g_send_rc(int rc, int32 value);
+void w32g_send_rc(int rc, ptr_size_t value);
 int w32g_lock_open_file = 0;
 
 void TiMidityHeapCheck(void);
@@ -666,7 +664,7 @@ MainProc(HWND hwnd, UINT uMess, WPARAM wParam, LPARAM lParam)
 		OnShow();
 		return FALSE;
       case WM_DROPFILES:
-		w32g_send_rc(RC_EXT_DROP, (int32)wParam);
+		w32g_send_rc(RC_EXT_DROP, (ptr_size_t)wParam);
 		return FALSE;
       case WM_HSCROLL: {
 		  int nScrollCode = (int)LOWORD(wParam);
@@ -3570,11 +3568,11 @@ void MPanelMessageAdd(char *message, int msec, int mode)
 		MPanelMessageData.nextmode = mode;
 		MPanelMessageData.nextmsec = msec;
 	} else if ( MPanelMessageData.curmode >= 0 ){
-		strncpy(MPanelMessageData.nextbuff,messagesizeof(MPanelMessageData.nextbuff)-1);
+		strncpy(MPanelMessageData.nextbuff,message,sizeof(MPanelMessageData.nextbuff)-1);
 		MPanelMessageData.nextmode = mode;
 		MPanelMessageData.nextmsec = msec;
 	} else {
-		strncpy(MPanelMessageData.nextbuff,messagesizeof(MPanelMessageData.nextbuff)-1);
+		strncpy(MPanelMessageData.nextbuff,message,sizeof(MPanelMessageData.nextbuff)-1);
 		MPanelMessageData.nextmode = mode;
 		MPanelMessageData.nextmsec = msec;
 		MPanelMessageNext();
@@ -3819,7 +3817,7 @@ static void VersionWnd(HWND hParentWnd)
 "TiMidity Windows 95 port by Nicolas Witczak." NLS
 "TiMidity Win32 GUI by Daisuke Aoki <dai@y7.net>." NLS
 " Japanese menu, dialog, etc by Saito <timidity@flashmail.com>." NLS
-"TiMidity++ by Masanao Izumo <mo@goice.co.jp>." NLS
+"TiMidity++ by Masanao Izumo <iz@onicos.co.jp>." NLS
 ,(strcmp(timidity_version, "current")) ? "version " : "", timidity_version);
 	MessageBox(hParentWnd, VersionText, "Version", MB_OK);
 }
@@ -3829,12 +3827,12 @@ static void TiMidityWnd(HWND hParentWnd)
 	char TiMidityText[2024];
   sprintf(TiMidityText,
 " TiMidity++ %s%s -- MIDI to WAVE converter and player" NLS
-" Copyright (C) 1999-2002 Masanao Izumo <mo@goice.co.jp>" NLS
+" Copyright (C) 1999-2018 Masanao Izumo <iz@onicos.co.jp>" NLS
 " Copyright (C) 1995 Tuukka Toivonen <tt@cgs.fi>" NLS
 NLS
 " Win32 version by Davide Moretti <dmoretti@iper.net>" NLS
 " GUI by Daisuke Aoki <dai@y7.net>." NLS
-" Modified by Masanao Izumo <mo@goice.co.jp>." NLS
+" Modified by Masanao Izumo <iz@onicos.co.jp>." NLS
 NLS
 " This program is free software; you can redistribute it and/or modify" NLS
 " it under the terms of the GNU General Public License as published by" NLS
@@ -4103,9 +4101,15 @@ void ClearDebugWnd(void)
 extern HWND hListSearchWnd;
 extern void HideListSearch(void);
 
+#ifndef __BORLANDC__
 DWORD volatile dwMainThreadId = 0;
+#endif
+
 void WINAPI MainThread(void *arglist)
 {
+#ifdef __BORLANDC__
+	DWORD volatile dwMainThreadId = 0;
+#endif
     MSG msg;
 
 	ThreadNumMax++;
@@ -4235,7 +4239,7 @@ static void DlgMidiFileOpen(HWND hwnd)
 		return;
 
     w32g_lock_open_file = 1;
-    w32g_send_rc(RC_EXT_LOAD_FILE, (int32)file);
+    w32g_send_rc(RC_EXT_LOAD_FILE, (ptr_size_t)file);
 }
 
 static volatile LPITEMIDLIST itemidlist_pre = NULL;
@@ -4289,7 +4293,7 @@ static void DlgDirOpen(HWND hwnd)
 	itemidlist_pre = itemidlist;
     w32g_lock_open_file = 1;
 	directory_form(Buffer);
-    w32g_send_rc(RC_EXT_LOAD_FILE, (int32)Buffer);
+    w32g_send_rc(RC_EXT_LOAD_FILE, (ptr_size_t)Buffer);
 }
 
 static void DlgPlaylistOpen(HWND hwnd)
@@ -4312,7 +4316,7 @@ static void DlgPlaylistOpen(HWND hwnd)
 		return;
 
     w32g_lock_open_file = 1;
-    w32g_send_rc(RC_EXT_LOAD_PLAYLIST, (int32)file);
+    w32g_send_rc(RC_EXT_LOAD_PLAYLIST, (ptr_size_t)file);
 }
 
 #include <sys/stat.h> /* for stat() */
@@ -4385,7 +4389,7 @@ static void DlgPlaylistSave(HWND hwnd)
 	if(!CheckOverWrite(hwnd, DialogFileNameBuff))
 		return;
     w32g_lock_open_file = 1;
-    w32g_send_rc(RC_EXT_SAVE_PLAYLIST, (int32)DialogFileNameBuff);
+    w32g_send_rc(RC_EXT_SAVE_PLAYLIST, (ptr_size_t)DialogFileNameBuff);
 }
 
 // ****************************************************************************
@@ -4495,7 +4499,7 @@ int w32g_msg_box(char *message, char *title, int type)
 static struct
 {
     int rc;
-    int32 value;
+    ptr_size_t value;
 } rc_queue[RC_QUEUE_SIZE];
 static volatile int rc_queue_len, rc_queue_beg, rc_queue_end;
 
@@ -4514,7 +4518,7 @@ void w32g_unlock(void)
 	    ReleaseSemaphore(w32g_lock_sem, 1, NULL);
 }
 
-void w32g_send_rc(int rc, int32 value)
+void w32g_send_rc(int rc, ptr_size_t value)
 {
     w32g_lock();
 
@@ -4534,7 +4538,7 @@ void w32g_send_rc(int rc, int32 value)
     w32g_unlock();
 }
 
-int w32g_get_rc(int32 *value, int wait_if_empty)
+int w32g_get_rc(ptr_size_t *value, int wait_if_empty)
 {
     int rc;
 

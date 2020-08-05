@@ -662,7 +662,7 @@ static Instrument *load_gus_instrument(char *name,
 			return ip;
 		}
 	/* Open patch file */
-	if (! (tf = open_file(name, 2, OF_NORMAL))) {
+	if (! (tf = open_file_r(name, 2, OF_NORMAL))) {
 #ifdef PATCH_EXT_LIST
 		int name_len, ext_len;
 		static char *patch_ext[] = PATCH_EXT_LIST;
@@ -680,7 +680,7 @@ static Instrument *load_gus_instrument(char *name,
 					continue;	/* duplicated ext. */
 				strcpy((char *) tmp, name);
 				strcat((char *) tmp, patch_ext[i]);
-				if ((tf = open_file((char *) tmp, 1, OF_NORMAL))) {
+				if ((tf = open_file_r((char *) tmp, 1, OF_NORMAL))) {
 					noluck = 0;
 					break;
 				}
@@ -1046,8 +1046,12 @@ Instrument *load_instrument(int dr, int b, int prog)
 	if (play_system_mode == GS_SYSTEM_MODE && (b == 64 || b == 65)) {
 		if (! dr)	/* User Instrument */
 			recompute_userinst(b, prog);
-		else		/* User Drumset */
-			recompute_userdrum(b, prog);
+		else {		/* User Drumset */
+			ip = recompute_userdrum(b, prog);
+			if (ip != NULL) {
+				return ip;
+			}
+		}
         }
 #endif
 	if (bank->tone[prog].instype == 1 || bank->tone[prog].instype == 2) {
@@ -1122,6 +1126,8 @@ Instrument *load_instrument(int dr, int b, int prog)
 	/* preload soundfont */
 	ip = load_soundfont_inst(0, font_bank, font_preset, font_keynote);
 	if (ip != NULL) {
+		if (bank->tone[prog].name == NULL) /* this should not be NULL to play the instrument */
+			bank->tone[prog].name = safe_strdup(DYNAMIC_INSTRUMENT_NAME);
 		if (bank->tone[prog].comment)
 			free(bank->tone[prog].comment);
 		bank->tone[prog].comment = safe_strdup(ip->instname);
@@ -1362,14 +1368,19 @@ static void free_tone_bank_list(ToneBank *tb[])
 {
 	int i, j;
 	ToneBank *bank;
-
-	for (i = 0; i < 128 + MAP_BANK_COUNT; i++)
+	
+	for (i = 0; i < 128 + map_bank_counter; i++)
 	{
 		bank = tb[i];
 		if (!bank)
 			continue;
 		for (j = 0; j < 128; j++)
 			free_tone_bank_element(&bank->tone[j]);
+
+		if (bank->alt)
+			free (bank->alt);
+		bank->alt = NULL;
+
 		if (i > 0)
 		{
 			free(bank);
@@ -1480,6 +1491,11 @@ void free_instruments(int reload_default_inst)
 		   (i == 0 || ip != tonebank[0]->tone[j].instrument))
 		    free_instrument(ip);
 		bank->tone[j].instrument = NULL;
+		if(bank->tone[j].name && !bank->tone[j].name[0]) /* DYNAMIC_INSTRUMENT_NAME */
+		{
+			free(bank->tone[j].name);
+			bank->tone[j].name = NULL;
+		}
 	    }
 	if((bank = drumset[i]) != NULL)
 	    for(j = 127; j >= 0; j--)
@@ -1489,7 +1505,18 @@ void free_instruments(int reload_default_inst)
 		   (i == 0 || ip != drumset[0]->tone[j].instrument))
 		    free_instrument(ip);
 		bank->tone[j].instrument = NULL;
+		if(bank->tone[j].name && !bank->tone[j].name[0]) /* DYNAMIC_INSTRUMENT_NAME */
+		{
+			free(bank->tone[j].name);
+			bank->tone[j].name = NULL;
+		}
 	    }
+#if 0
+		if ((drumset[i] != NULL) && (drumset[i]->alt != NULL)) {
+			free(drumset[i]->alt);
+			drumset[i]->alt = NULL;
+		}
+#endif
     }
 
     /* Free GUS/patch instruments */

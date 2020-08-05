@@ -140,6 +140,8 @@ extern void sry_encode_bindata( char *code, const char *org, int len);
 extern int sry_decode_bindata( char *data );
 extern int wrd_read_sherry;
 
+extern void free_wrd(void);
+
 static inline void print_ecmd(char*, int*, int);
 #ifdef HAVE_STRINGS_H
 #include <strings.h>
@@ -148,7 +150,13 @@ static inline void print_ecmd(char*, int*, int);
 #endif
 #include <limits.h>
 #include "mblock.h"
+#include "common.h"
 #include "controls.h"
+
+#ifdef __BORLANDC__
+extern void pr_ecmd(char *cmd, int *args, int narg);
+#define print_ecmd( a, b, c) pr_ecmd(a, b, c)
+#else
 static inline void print_ecmd(char *cmd, int *args, int narg)
 {
     char *p;
@@ -182,5 +190,6 @@ static inline void print_ecmd(char *cmd, int *args, int narg)
     ctl->cmsg(CMSG_INFO, VERB_VERBOSE, "%s", p);
     reuse_mblock(&tmpbuffer);
 }
+#endif
 
 #endif /* ___WRD_H_ */

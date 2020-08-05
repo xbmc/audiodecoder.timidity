@@ -113,6 +113,25 @@ struct midi_file_info
     struct timidity_file *pcm_tf;
 };
 
+typedef struct {
+	int meas;
+	int beat;
+} Measure;
+
+typedef struct _TimeSegment {
+	int type;	/* seconds: 0, measure: 1 */
+	union {
+		FLOAT_T s;
+		Measure m;
+	} begin;
+	union {
+		FLOAT_T s;
+		Measure m;
+	} end;
+	struct _TimeSegment *prev;
+	struct _TimeSegment *next;
+} TimeSegment;
+
 extern int32 readmidi_set_track(int trackno, int rewindp);
 extern void readmidi_add_event(MidiEvent *newev);
 extern void readmidi_add_ctl_event(int32 at, int ch, int control, int val);
@@ -120,8 +139,10 @@ extern int parse_sysex_event(uint8 *data, int32 datalen, MidiEvent *ev_ret);
 extern int parse_sysex_event_multi(uint8 *data, int32 datalen, MidiEvent *ev_ret);
 extern int convert_midi_control_change(int chn, int type, int val,
 				       MidiEvent *ev_ret);
+extern int unconvert_midi_control_change(MidiEvent *ev);
 extern char *readmidi_make_string_event(int type, char *string, MidiEvent *ev,
 					int cnv);
+extern void free_time_segments(void);
 extern MidiEvent *read_midi_file(struct timidity_file *mtf,
 				 int32 *count, int32 *sp, char *file_name);
 extern struct midi_file_info *get_midi_file_info(char *filename,int newp);
@@ -139,6 +160,7 @@ extern int dump_current_timesig(MidiEvent *codes, int maxlen);
 
 extern ChannelBitMask quietchannels;
 extern struct midi_file_info *current_file_info;
+extern TimeSegment *time_segments;
 extern int opt_trace_text_meta_event;
 extern int opt_default_mid;
 extern int opt_system_mid;
@@ -162,7 +184,7 @@ extern void set_multi_eq_type_xg(int);
 extern void realloc_effect_xg(struct effect_xg_t *st);
 extern void recompute_effect_xg(struct effect_xg_t *st);
 
-extern void recompute_userdrum(int bank, int prog);
+extern Instrument *recompute_userdrum(int bank, int prog);
 extern void free_userdrum();
 
 extern void recompute_userinst(int bank, int prog);
@@ -171,5 +193,9 @@ extern void free_userinst();
 extern void init_channel_layer(int);
 extern void add_channel_layer(int, int);
 extern void remove_channel_layer(int);
+
+extern void free_readmidi(void);
+
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
 
 #endif /* ___READMIDI_H_ */

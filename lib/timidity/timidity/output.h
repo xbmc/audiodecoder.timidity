@@ -103,10 +103,13 @@ enum {
 			 * Get filled device queue size
 			 */
 
-    PM_REQ_OUTPUT_FINISH /* ARG: not-used
+    PM_REQ_OUTPUT_FINISH, /* ARG: not-used
 			  * PM_REQ_OUTPUT_FINISH calls just after the last
 			  * output_data(), and TiMidity would into
 			  * waiting to flush the audio buffer.
+			  */
+
+    PM_REQ_DIVISIONS,	  /* ARG: int32* - pointer to divisions number
 			  */
 };
 
@@ -118,6 +121,7 @@ enum {
 #define PF_BUFF_FRAGM_OPT (1u<<3) /* Enable set extra_param[0] to specify
 				   the number of audio buffer fragments */
 #define PF_AUTO_SPLIT_FILE (1u<<4) /* Split PCM files automatically */
+#define PF_FILE_OUTPUT (1u<<5) /* Output is to file rather than device */
 #define IS_STREAM_TRACE	((play_mode->flag & (PF_PCM_STREAM|PF_CAN_TRACE)) == (PF_PCM_STREAM|PF_CAN_TRACE))
 
 typedef struct {
@@ -172,7 +176,9 @@ extern void s32toalaw(int32 *lp, int32 c);
 
 extern int32 general_output_convert(int32 *buf, int32 count);
 extern int validate_encoding(int enc, int include_enc, int exclude_enc);
+extern int32 apply_encoding(int32 old_enc, int32 new_enc);
 extern const char *output_encoding_string(int enc);
+extern int get_encoding_sample_size(int32 enc);
 
 extern char *create_auto_output_name(const char *input_filename, char *ext_str, char *output_dir, int mode);
 

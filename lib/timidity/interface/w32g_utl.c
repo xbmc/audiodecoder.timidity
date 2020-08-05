@@ -63,6 +63,7 @@ extern char def_instr_name[];
 extern int opt_control_ratio;
 extern char *opt_aq_max_buff;
 extern char *opt_aq_fill_buff;
+extern int opt_aq_fill_buff_free_needed;
 extern int opt_evil_mode;
 extern int opt_buffer_fragments;
 extern int32 opt_output_rate;
@@ -542,7 +543,8 @@ ApplySettingTiMidity(SETTING_TIMIDITY *st)
     set_ctl(st->opt_ctl);
     opt_realtime_playing = SetFlag(st->opt_realtime_playing);
     reduce_voice_threshold = st->reduce_voice_threshold;
-    set_play_mode(st->opt_playmode);
+    if (*st->opt_playmode != '\0')
+	set_play_mode(st->opt_playmode);
     strncpy(OutputName,st->OutputName,MAXPATH);
 #if 0
     if(OutputName[0] && !is_device_output_ID(play_mode->id_character))
@@ -561,12 +563,13 @@ ApplySettingTiMidity(SETTING_TIMIDITY *st)
     else if(play_mode->rate == 0)
 	play_mode->rate = DEFAULT_RATE;
     voices = st->voices;
+	if( voices > max_voices) max_voices = voices;
 	auto_reduce_polyphony = st->auto_reduce_polyphony;
     quietchannels = st->quietchannels;
     temper_type_mute = st->temper_type_mute;
     if(opt_aq_max_buff)
 	free(opt_aq_max_buff);
-    if(opt_aq_fill_buff)
+    if(opt_aq_fill_buff && opt_aq_fill_buff_free_needed)
 	free(opt_aq_fill_buff);
     strcpy(buffer, st->opt_qsize);
     opt_aq_max_buff = buffer;
@@ -780,7 +783,7 @@ static char S_ConfigFileOpenDir[MAXPATH + 32];
 static char S_PlaylistFileOpenDir[MAXPATH + 32];
 static char S_DocFileExt[256];
 static char S_OutputName[MAXPATH + 32];
-static char *OutputName;
+char *OutputName;
 static char S_w32g_output_dir[1024 + 32];
 static char S_SystemFont[256];
 static char S_PlayerFont[256];
@@ -788,12 +791,12 @@ static char S_WrdFont[256];
 static char S_DocFont[256];
 static char S_ListFont[256];
 static char S_TracerFont[256];
-static char *SystemFont = S_SystemFont;
+char *SystemFont = S_SystemFont;
 char *PlayerFont = S_PlayerFont;
-static char *WrdFont = S_WrdFont;
-static char *DocFont = S_DocFont;
-static char *ListFont = S_ListFont;
-static char *TracerFont = S_TracerFont;
+char *WrdFont = S_WrdFont;
+char *DocFont = S_DocFont;
+char *ListFont = S_ListFont;
+char *TracerFont = S_TracerFont;
 
 //static HFONT hSystemFont = 0;
 //static HFONT hPlayerFont = 0;
@@ -801,17 +804,17 @@ static char *TracerFont = S_TracerFont;
 //static HFONT hDocFont = 0;
 //static HFONT hListFont = 0;
 //static HFONT hTracerFont = 0;
-static int SystemFontSize = 9;
-static int PlayerFontSize = 16;
-static int WrdFontSize = 16;
-static int DocFontSize = 16;
-static int ListFontSize = 16;
-static int TracerFontSize = 16;
+int SystemFontSize = 9;
+int PlayerFontSize = 16;
+int WrdFontSize = 16;
+int DocFontSize = 16;
+int ListFontSize = 16;
+int TracerFontSize = 16;
 
 #define DEFAULT_DOCFILEEXT "doc;txt;hed"
 
-SETTING_PLAYER *sp_default, *sp_current, *sp_temp;
-SETTING_TIMIDITY *st_default, *st_current, *st_temp;
+SETTING_PLAYER *sp_default=NULL, *sp_current=NULL, *sp_temp=NULL;
+SETTING_TIMIDITY *st_default=NULL, *st_current=NULL, *st_temp=NULL;
 char *timidity_window_inifile;
 char *timidity_output_inifile;
 
@@ -825,6 +828,16 @@ extern int vorbis_ConfigDialogInfoInit(void);
 extern int vorbis_ConfigDialogInfoSaveINI(void);
 extern int vorbis_ConfigDialogInfoLoadINI(void);
 #endif
+
+void w32g_uninitialize(void)
+{
+	if(sp_default != NULL) free(sp_default);
+	if(st_default != NULL) free(st_default);
+	if(sp_current != NULL) free(sp_current);
+	if(st_current != NULL) free(st_current);
+	if(sp_temp != NULL) free(sp_temp);
+	if(st_temp != NULL) free(st_temp);
+}
 
 void w32g_initialize(void)
 {
@@ -843,6 +856,15 @@ void w32g_initialize(void)
     DocFileExt = S_DocFileExt;
     OutputName = S_OutputName;
 	w32g_output_dir = S_w32g_output_dir;
+    switch (PRIMARYLANGID(GetUserDefaultLangID()))
+    {
+    case LANG_JAPANESE:
+	PlayerLanguage = LANGUAGE_JAPANESE;
+	break;
+    default:
+	PlayerLanguage = LANGUAGE_ENGLISH;
+	break;
+    }
   
     IniFile[0] = '\0';
     ConfigFile[0] = '\0';
@@ -1296,7 +1318,7 @@ int w32gLoadDefaultPlaylist(void)
 {
 	if(AutoloadPlaylist) {
     w32g_lock_open_file = 1;
-    w32g_send_rc(RC_EXT_LOAD_PLAYLIST, (int32)DefaultPlaylistPath);
+    w32g_send_rc(RC_EXT_LOAD_PLAYLIST, (ptr_size_t)DefaultPlaylistPath);
 	}
 	return 0;
 }
@@ -1305,7 +1327,7 @@ int w32gSaveDefaultPlaylist(void)
 {
 	if(AutosavePlaylist) {
     w32g_lock_open_file = 1;
-    w32g_send_rc(RC_EXT_SAVE_PLAYLIST, (int32)DefaultPlaylistPath);
+    w32g_send_rc(RC_EXT_SAVE_PLAYLIST, (ptr_size_t)DefaultPlaylistPath);
 	}
 	return 0;
 }

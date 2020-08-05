@@ -5,12 +5,15 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR})
 
 find_package(Kodi REQUIRED)
 
-include_directories(${PROJECT_SOURCE_DIR}/lib # Do this first for override of <kodi/tools/DllHelper.h> with own (until kodi itself is changed to)
+include_directories(${PROJECT_SOURCE_DIR}/lib
                     ${KODI_INCLUDE_DIR}/..) # Hack way with "/..", need bigger Kodi cmake rework to match right include ways (becomes done in future)
 
 add_subdirectory(lib/timidity)
 
-set(TIMIDITY_SOURCES src/TimidityCodec.cpp)
+set(TIMIDITY_SOURCES src/MidiScan.cpp
+                     src/TimidityCodec.cpp)
+set(TIMIDITY_HEADERS src/MidiScan.h
+                     src/TimidityCodec.h)
 
 add_definitions(-DLIBRARY_PREFIX="${CMAKE_SHARED_LIBRARY_PREFIX}"
                 -DLIBRARY_SUFFIX="${CMAKE_SHARED_LIBRARY_SUFFIX}")

@@ -781,8 +781,7 @@ static void sry_pal_v2r(uint8 *data)
 
 static void png_read_func(png_structp png_ptr, char *buff, size_t n)
 {
-    struct timidity_file *tf;
-    tf = (struct timidity_file *)png_ptr->io_ptr;
+    struct timidity_file *tf = png_get_io_ptr(png_ptr);
     tf_read(buff, 1, n, tf);
 }
 
@@ -827,7 +826,7 @@ static void sry_load_png(uint8 *data)
 
     screen = SRY_GET_SHORT(data) & 0xffff;
     vpalette = SRY_GET_SHORT(data + 2) & 0xffff;
-    filename = data + 4;
+    filename = (char *)data + 4;
 
 #ifdef SRY_DEBUG
     printf("Load png: %s: scr=%d pal=%d\n", filename, screen, vpalette);
@@ -845,7 +844,7 @@ static void sry_load_png(uint8 *data)
 	err_to_stop = 1;
 	return;
     }
-    if(png_sig_cmp(sig, 0, sizeof(sig)))
+    if(png_sig_cmp((unsigned char*)sig, 0, sizeof(sig)))
     {
 	ctl->cmsg(CMSG_ERROR, VERB_NORMAL, "%s: Not a png file", filename);
 	err_to_stop = 1;
@@ -909,7 +908,11 @@ static void sry_load_png(uint8 *data)
 	{
 	    if(png_get_valid(pngPtr, infoPtr, PNG_INFO_hIST))
 		png_get_hIST(pngPtr, infoPtr, &hist);
+#if PNG_LIBPNG_VER >= 10402
+	    png_set_quantize(pngPtr, palette,
+#else
 	    png_set_dither(pngPtr, palette,
+#endif
 			   numPalette, MAX_SCREEN_COLORS, hist, 1);
 	}
     }
@@ -934,13 +937,14 @@ static void sry_load_png(uint8 *data)
 		}
 	    }
 	}
+#if PNG_LIBPNG_VER >= 10402
+	png_set_quantize(pngPtr, stdColorCube,
+#else
 	png_set_dither(pngPtr, stdColorCube,
+#endif
 		       6*7*6, MAX_SCREEN_COLORS,
 		       NULL, 1);
-	/*???*/
-	png_set_PLTE(pngPtr, infoPtr, pngPtr->palette, pngPtr->num_palette);
-	palette = pngPtr->palette;
-	numPalette = pngPtr->num_palette;
+	png_get_PLTE(pngPtr, infoPtr, &palette, &numPalette);
     }
 
     if(png_get_valid(pngPtr, infoPtr, PNG_INFO_tRNS))

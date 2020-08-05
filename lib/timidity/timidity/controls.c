@@ -24,6 +24,12 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif /* HAVE_CONFIG_H */
+
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>
+#endif /* HAVE_UNISTD_H */
+
+#include "interface.h"
 #include "timidity.h"
 #include "controls.h"
 
@@ -39,3 +45,11 @@ ControlMode *ctl_list[]={
 };
 
 ControlMode *ctl=DEFAULT_CONTROL_MODE;
+
+int std_write(int fd, const void *buffer, int size)
+{
+    /* redirect stdout writes */
+    if (fd == 1 && ctl->write)
+	return ctl->write((char*)buffer, size);
+    return write(fd, buffer, size);
+}

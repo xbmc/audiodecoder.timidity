@@ -316,13 +316,17 @@ static int import_wave_discriminant(char *sample_file)
 static int import_wave_load(char *sample_file, Instrument *inst)
 {
 	struct timidity_file	*tf;
-	char			buf[12];
+	union {
+		int32 i[3];
+		char c[12];
+	} xbuf;
+	char			*buf = xbuf.c;
 	int				state;		/* initial > fmt_read > data_read */
-	int				i, chunk_size, type_index, type_size, samples;
+	int				i, chunk_size, type_index, type_size, samples = 0;
 	int32			chunk_flags;
 	Sample			*sample;
-	WAVFormatChunk	format;
-	WAVSamplerChunk	samplerc;
+	WAVFormatChunk	format = {0,};
+	WAVSamplerChunk	samplerc = {0,};
 	GeneralInstrumentInfo	instc;
 	
 	if ((tf = open_file(sample_file, 1, OF_NORMAL)) == NULL)
@@ -339,7 +343,7 @@ static int import_wave_load(char *sample_file, Instrument *inst)
 	for(;;) {
 		if (tf_read(&buf[type_index], type_size, 1, tf) != 1)
 			break;
-		chunk_size = LE_LONG(*(int32 *)&buf[4 + 4]);
+		chunk_size = LE_LONG(xbuf.i[2]);
 		if (memcmp(&buf[4 + 0], "fmt ", 4) == 0)
 		{
 			if (state != 0					/* only one format chunk is required */
@@ -400,9 +404,9 @@ static int import_wave_load(char *sample_file, Instrument *inst)
 	{
 		uint8		modes;
 		int32		sample_rate, root_freq;
-		uint32		loopStart, loopEnd;
+		uint32		loopStart = 0, loopEnd = 0;
 		
-		sample_rate = 1000000000 / samplerc.dwSamplePeriod;
+		sample_rate = samplerc.dwSamplePeriod == 0 ? 0 : 1000000000 / samplerc.dwSamplePeriod;
 		root_freq = freq_table[samplerc.dwMIDIUnityNote];
 		if (samplerc.dwMIDIPitchFraction != 0
 				&& samplerc.dwMIDIUnityNote != 127)	/* no table data */
@@ -425,7 +429,8 @@ static int import_wave_load(char *sample_file, Instrument *inst)
 		for(i = 0; i < samples; i++)
 		{
 			sample = &inst->sample[i];
-			sample->sample_rate = sample_rate;
+			if (sample_rate != 0)
+				sample->sample_rate = sample_rate;
 			sample->root_freq = root_freq;
 			if (modes != 0)
 			{
@@ -597,14 +602,18 @@ static int import_aiff_discriminant(char *sample_file)
 static int import_aiff_load(char *sample_file, Instrument *inst)
 {
 	struct timidity_file	*tf;
-	char			buf[12];
+	union {
+		int32 i[3];
+		char c[12];
+	} xbuf;
+	char			*buf = xbuf.c;
 	int				chunk_size, type_index, type_size;
 	int				compressed;
 	int32			chunk_flags;
 	AIFFCommonChunk	common;
 	AIFFSoundDataChunk	sound;
 	GeneralInstrumentInfo	inst_info;
-	AIFFLoopInfo	loop_info;
+	AIFFLoopInfo	loop_info = {0,0,0};
 	AIFFMarkerData	*marker_data;
 	
 	if ((tf = open_file(sample_file, 1, OF_NORMAL)) == NULL)
@@ -626,7 +635,7 @@ static int import_aiff_load(char *sample_file, Instrument *inst)
 	for(;;) {
 		if (tf_read(&buf[type_index], type_size, 1, tf) != 1)
 			break;
-		chunk_size = BE_LONG(*(int32 *)&buf[4 + 4]);
+		chunk_size = BE_LONG(xbuf.i[2]);
 		if (memcmp(&buf[4 + 0], "COMM", 4) == 0)
 		{
 			if (chunk_flags & AIFF_CHUNKFLAG_COMMON)

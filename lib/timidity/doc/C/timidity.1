@@ -199,7 +199,7 @@ volume 90%, drum power 120%, compensation is on
 .RE
 .TP
 .B \-a, \-\-[no\-]anti\-alias
-Turns on antialiasing.  Samples are run through a lowpass filter
+Turns on anti-aliasing.  Samples are run through a lowpass filter
 before playing, which reduces aliasing noise at low resampling
 frequencies.
 .TP
@@ -269,7 +269,7 @@ understood as \fB41\fP, \fB43\fP and \fB7e\fP respectively.
 Sets the system manufacturer ID to \fIHH\fP (where \fIHH\fP are two
 hex\-digits).
 .br
-In this option, the manufacuture ID is set unchangable. Manufacuture
+In this option, the manufacture ID is set unchangeable. Manufacture
 ID from the input file would be ignored.
 .TP
 .BI b n ", \-\-default\-bank=" n
@@ -328,7 +328,11 @@ The optional parameter \fIlevel\fP specifies the chorus level \fB0\fP
 to \fB127\fP.
 .RE
 .TP
-.BI reverb= (d|n|g|f|G)[,level] ", \-\-reverb=" (d|n|g|f|G)[,level]
+.BI reverb= (d|n|g)[,level] ", \-\-reverb=" (d|n|g)[,level]
+.TP
+.BI reverb= (f|G)[,level,scaleroom,offsetroom,predelay]
+.TP
+.BI "\-\-reverb=" (f|G)[,level,scaleroom,offsetroom,predelay]
 .RS
 .TP
 .B d, 0
@@ -345,10 +349,23 @@ Global reverb effect.
 Freeverb MIDI reverb effect control (default).
 .TP
 .B G, 4
-Global freeverb effect.
+Global Freeverb effect.
 .LP
 The optional parameter \fIlevel\fP specifies the reverb level \fB0\fP
 to \fB127\fP.
+.br
+For Freeverb effect, additional parameters \fIscaleroom\fP,
+\fIoffsetroom\fP and \fIpredelay\fP can be specified.
+\fIscaleroom\fP and \fIoffsetroom\fP specify variables for the room
+size calculated as
+.br
+roomsize = C * \fIscaleroom\fP + \fIoffsetroom\fP
+.br
+where C is the reverberation character.
+\fIpredelay\fP specifies the factor for pre-delay time of
+reverberation in percent.
+Any of the optional parameters can be omitted.
+Default values are \fB0.28\fP, \fB0.7\fP and \fB100\fP respectively.
 .RE
 .TP
 .BI vlpf= (d|c|m) ", \-\-voice\-lpf=" (d|c|m)
@@ -435,6 +452,39 @@ In the current version of \fBTiMidity++\fP this option is a toggle.
 Toggles fast envelopes.  This option makes \fBTiMidity++\fP faster but
 the release time of the notes are shortened.
 .TP
+.BI "\-G " begin1-end1[,begin2-end2,...](m)
+.br
+.ns
+.TP
+.BI \-\-segment= begin1-end1[,begin2-end2,...](m)
+Play just sub-segment(s) specified by comma separated time segments.
+.br
+Each time segment defined by dash separated time values of:
+\fIbegin\fP-\fIend\fP - defaulted to \fB0-infinity\fP.
+Playing from \fIbegin\fP to \fIend\fP.
+.sp
+Time format: \fI[<minutes>:]<seconds>[.<milliseconds>]\fP
+.sp
+To put `m' character along with the option treats it as measure and
+beat instead of seconds.
+.sp
+Time format: \fI<measure>[.<beat>]\fP (measure and beat are one-origin)
+.sp
+For example:
+.RS
+.TP
+.B \-G12-1:00.500
+Skip 12 seconds and stop at 1 minute and half a second.
+.TP
+.B \-G-5,2:00-
+Play the initial 5 seconds, then skip to 2 minutes from start and play
+till end.
+.TP
+.B \-G11.4-20m -G4:00-
+Play from the 4th beat in the 11th measure to the 20th measure, then
+skip to 4 minutes from start and play till end.
+.RE
+.TP
 .BI "\-g " sec ", \-\-spectrogram=" sec
 Open the Sound\-Spectrogram window.  This option is activated if the
 system has support for the X Window System.
@@ -516,10 +566,10 @@ Launch \fBTiMidity++\fP as MIDI server.
 Launch \fBTiMidity++\fP as ALSA sequencer client.
 .TP
 .B \-iW
-Windodws synthesizer interface
+Windows synthesizer interface
 .TP
 .B \-iw
-Windodws GUI interface
+Windows GUI interface
 .TP
 .B \-iP
 PortMIDI synthesizer interface
@@ -691,7 +741,7 @@ The following identifiers are available in all versions:
 .RS
 .TP
 .B \-Od
-Outputs via audio device (default)
+Outputs via OSS dsp device (default)
 .TP
 .B \-Os
 Output to ALSA
@@ -740,7 +790,7 @@ PortAudio
 .B \-Oj
 JACK
 .TP
-.B \-Or
+.B \-OR
 aRts
 .TP
 .B \-OA
@@ -756,7 +806,7 @@ Ogg FLAC
 Ogg Speex
 .TP
 .B \-OO
-libdao
+libao
 .TP
 .B Format options
 Option characters may be added immediately after the mode identifier
@@ -1092,7 +1142,7 @@ USA
 .SH AVAILABILITY
 The latest release is available on the \fBTiMidity++\fP Page,
 .LP
-URL http://www.timidity.jp/
+URL https://sourceforge.net/projects/timidity/
 .SH BUGS
 Eats more CPU time than a small CPU\-time\-eating animal.
 .LP

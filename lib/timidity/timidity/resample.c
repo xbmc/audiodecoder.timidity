@@ -255,7 +255,7 @@ static sample_t *newt_old_src = NULL;
 static resample_t resample_newton(sample_t *src, splen_t ofs, resample_rec_t *rec)
 {
     int n_new, n_old;
-    int32 v1, v2, diff;
+    int32 v1, v2, diff = 0;
     sample_t *sptr;
     double y, xd;
     int32 left, right, temp_n;
@@ -459,6 +459,13 @@ void initialize_gauss_table(int n)
     	    *gptr++ = ck;
     	}
     }
+}
+
+void free_gauss_table(void)
+{
+	if(gauss_table[0] != 0)
+	  free(gauss_table[0]);
+	gauss_table[0] = NULL;
 }
 
 #if 0 /* NOT USED */
@@ -1061,7 +1068,7 @@ static resample_t *rs_vib_bidir(Voice *vp, int32 count)
   int32 incr = vp->sample_increment;
   resample_rec_t resrc;
 
-#ifdef PRECALC_LOOPS
+#if 0 /*def PRECALC_LOOPS*/
 #if SAMPLE_LENGTH_BITS == 32
   int32
 #else
@@ -1428,11 +1435,4 @@ void pre_resample(Sample * sp)
   sp->sample_rate = play_mode->rate;
   sp->low_freq = freq_table[0];
   sp->high_freq = freq_table[127];
-}
-
-
-void free_gauss_table()
-{
-	free( gauss_table[0] );
-	gauss_table[0] = 0;
 }

@@ -20,7 +20,7 @@
 
 /*==============================================================================
 
-  $Id: load_it.c,v 1.39 1999/10/25 16:31:41 miod Exp $
+  $Id$
 
   Impulse tracker (IT) module loader
 
@@ -59,8 +59,8 @@ typedef struct ITHEADER
     UWORD msglength;
     ULONG msgoffset;
     UBYTE blank02[4];
-    UBYTE pantable[64];
-    UBYTE voltable[64];
+    UBYTE pantable[UF_MAXCHAN];
+    UBYTE voltable[UF_MAXCHAN];
   }
 ITHEADER;
 
@@ -162,7 +162,7 @@ static ITNOTE *last = NULL;	/* uncompressing IT's pattern information */
 static int numtrk = 0;
 static int old_effect;		/* if set, use S3M old-effects stuffs */
 
-static CHAR *IT_Version[] =
+static const CHAR *IT_Version[] =
 {
   "ImpulseTracker  .  ",
   "Compressed ImpulseTracker  .  ",
@@ -173,12 +173,12 @@ static CHAR *IT_Version[] =
 };
 
 /* table for porta-to-note command within volume/panning column */
-static UBYTE portatable[10] =
+static const UBYTE portatable[10] =
 {0, 1, 4, 8, 16, 32, 64, 96, 128, 255};
 
 /*========== Loader code */
 
-BOOL 
+static BOOL
 IT_Test (void)
 {
   UBYTE id[4];
@@ -190,7 +190,7 @@ IT_Test (void)
   return 0;
 }
 
-BOOL 
+static BOOL
 IT_Init (void)
 {
   if (!(mh = (ITHEADER *) _mm_malloc (sizeof (ITHEADER))))
@@ -207,7 +207,7 @@ IT_Init (void)
   return 1;
 }
 
-void 
+static void
 IT_Cleanup (void)
 {
   FreeLinear ();
@@ -451,7 +451,7 @@ IT_LoadMidiConfiguration (URL modreader)
       _mm_fseek (modreader, 8 * dat + 0x120, SEEK_CUR);
 
       /* read midi macros */
-      for (i = 0; i < 16; i++)
+      for (i = 0; i < UF_MAXMACRO; i++)
 	{
 	  LoadMidiString (modreader, midiline);
 	  if ((!strncmp (midiline, "F0F00", 5)) &&
@@ -491,13 +491,12 @@ IT_LoadMidiConfiguration (URL modreader)
     }
 }
 
-BOOL 
+static BOOL
 IT_Load (BOOL curious)
 {
   int t, u, lp;
   INSTRUMENT *d;
   SAMPLE *q;
-  BOOL compressed = 0;
 
   numtrk = 0;
   filters = 0;
@@ -523,8 +522,8 @@ IT_Load (BOOL curious)
   mh->msglength = _mm_read_I_UWORD (modreader);
   mh->msgoffset = _mm_read_I_ULONG (modreader);
   _mm_read_UBYTES (mh->blank02, 4, modreader);
-  _mm_read_UBYTES (mh->pantable, 64, modreader);
-  _mm_read_UBYTES (mh->voltable, 64, modreader);
+  _mm_read_UBYTES (mh->pantable, UF_MAXCHAN, modreader);
+  _mm_read_UBYTES (mh->voltable, UF_MAXCHAN, modreader);
 
   if (_mm_eof (modreader))
     {
@@ -576,7 +575,7 @@ IT_Load (BOOL curious)
     old_effect = 0;
 
   /* set panning positions */
-  for (t = 0; t < 64; t++)
+  for (t = 0; t < UF_MAXCHAN; t++)
     {
       mh->pantable[t] &= 0x7f;
       if (mh->pantable[t] < 64)
@@ -595,7 +594,7 @@ IT_Load (BOOL curious)
     }
 
   /* set channel volumes */
-  memcpy (of.chanvol, mh->voltable, 64);
+  memcpy (of.chanvol, mh->voltable, UF_MAXCHAN);
 
   /* read the order data */
   if (!AllocPositions (mh->ordnum))
@@ -741,7 +740,6 @@ IT_Load (BOOL curious)
       if ((s.flag & 8) && (mh->cwt >= 0x214))
 	{
 	  q->flags |= SF_ITPACKED;
-	  compressed = 1;
 	}
       if (s.flag & 16)
 	q->flags |= SF_LOOP;
@@ -827,6 +825,8 @@ IT_Load (BOOL curious)
 #define IT_LoadEnvelope(name,type) 											\
 				ih.name##flg   =_mm_read_UBYTE(modreader);				\
 				ih.name##pts   =_mm_read_UBYTE(modreader);				\
+				if (ih. name##pts > ITENVCNT)						\
+					ih. name##pts = ITENVCNT;					\
 				ih.name##beg   =_mm_read_UBYTE(modreader);				\
 				ih.name##end   =_mm_read_UBYTE(modreader);				\
 				ih.name##susbeg=_mm_read_UBYTE(modreader);				\
@@ -1033,7 +1033,7 @@ IT_Load (BOOL curious)
 
   /* Figure out how many channels this song actually uses */
   of.numchn = 0;
-  memset (remap, -1, 64 * sizeof (UBYTE));
+  memset (remap, -1, UF_MAXCHAN * sizeof (UBYTE));
   for (t = 0; t < of.numpat; t++)
     {
       UWORD packlen;
@@ -1060,7 +1060,7 @@ IT_Load (BOOL curious)
     }
 
   /* give each of them a different number */
-  for (t = 0; t < 64; t++)
+  for (t = 0; t < UF_MAXCHAN; t++)
     if (!remap[t])
       remap[t] = of.numchn++;
 
@@ -1076,8 +1076,6 @@ IT_Load (BOOL curious)
 
   for (t = 0; t < of.numpat; t++)
     {
-      UWORD packlen;
-
       /* seek to pattern position */
       if (!paraptr[mh->insnum + mh->smpnum + t])
 	{			/* 0 -> empty 64 row pattern */
@@ -1095,7 +1093,7 @@ IT_Load (BOOL curious)
       else
 	{
 	  _mm_fseek (modreader, ((long) paraptr[mh->insnum + mh->smpnum + t]), SEEK_SET);
-	  packlen = _mm_read_I_UWORD (modreader);
+	  /* packlen = */ _mm_read_I_UWORD (modreader);
 	  of.pattrows[t] = _mm_read_I_UWORD (modreader);
 	  _mm_read_I_ULONG (modreader);
 	  if (!IT_ReadPattern (of.pattrows[t]))
@@ -1106,7 +1104,7 @@ IT_Load (BOOL curious)
   return 1;
 }
 
-CHAR *
+static CHAR *
 IT_LoadTitle (void)
 {
   CHAR s[26];

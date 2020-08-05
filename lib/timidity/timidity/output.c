@@ -45,7 +45,7 @@ extern PlayMode wave_play_mode;
 
 PlayMode *play_mode_list[] = {
   DEV_PLAY_MODE,
-  0
+  NULL
 };
 
 PlayMode *play_mode = &wave_play_mode;
@@ -292,9 +292,7 @@ int32 general_output_convert(int32 *buf, int32 count)
 int validate_encoding(int enc, int include_enc, int exclude_enc)
 {
     const char *orig_enc_name, *enc_name;
-    int orig_enc;
 
-    orig_enc = enc;
     orig_enc_name = output_encoding_string(enc);
     enc |= include_enc;
     enc &= ~exclude_enc;
@@ -310,6 +308,22 @@ int validate_encoding(int enc, int include_enc, int exclude_enc)
 		  "Notice: Audio encoding is changed `%s' to `%s'",
 		  orig_enc_name, enc_name);
     return enc;
+}
+
+int32 apply_encoding(int32 old_enc, int32 new_enc)
+{
+	const int32 mutex_flags[] = {
+		PE_16BIT | PE_24BIT | PE_ULAW | PE_ALAW,
+		PE_BYTESWAP | PE_ULAW | PE_ALAW,
+		PE_SIGNED | PE_ULAW | PE_ALAW,
+	};
+	int i;
+
+	for (i = 0; i < sizeof mutex_flags / sizeof mutex_flags[0]; i++) {
+		if (new_enc & mutex_flags[i])
+			old_enc &= ~mutex_flags[i];
+	}
+	return old_enc | new_enc;
 }
 
 const char *output_encoding_string(int enc)
@@ -375,6 +389,17 @@ const char *output_encoding_string(int enc)
     /*NOTREACHED*/
 }
 
+int get_encoding_sample_size(int32 enc)
+{
+	int size = (enc & PE_MONO) ? 1 : 2;
+
+	if (enc & PE_24BIT)
+		size *= 3;
+	else if (enc & PE_16BIT)
+		size *= 2;
+	return size;
+}
+
 /* mode
   0,1: Default mode.
   2: Remove the directory path of input_filename, then add output_dir.
@@ -387,7 +412,7 @@ char *create_auto_output_name(const char *input_filename, char *ext_str, char *o
   int32 dir_len = 0;
   char ext_str_tmp[65];
 
-  output_filename = (char *)safe_malloc((output_dir?strlen(output_dir):0) + strlen(input_filename) + 6);
+  output_filename = (char *)safe_malloc((output_dir!=NULL?strlen(output_dir):0) + strlen(input_filename) + 6);
   if(output_filename==NULL)
     return NULL;
   output_filename[0] = '\0';

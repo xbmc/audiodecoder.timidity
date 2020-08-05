@@ -1,5 +1,5 @@
 # TiMidity++ -- MIDI to WAVE converter and player
-# Copyright (C) 1999-2004 Masanao Izumo <iz@onicos.co.jp>
+# Copyright (C) 1999-2008 Masanao Izumo <iz@onicos.co.jp>
 # Copyright (C) 1995 Tuukka Toivonen <tt@cgs.fi>
 #
 # This program is free software; you can redistribute it and/or modify
@@ -18,7 +18,7 @@
 
 include $(top_srcdir)/common.makefile.in
 
-SUFFIXES = .ptcl .tcl .@so@
+SUFFIXES = .ptcl .tcl .pel .el .@so@
 
 SUBDIRS = motif_bitmaps bitmaps pixmaps
 
@@ -29,10 +29,14 @@ INCLUDES = \
 
 noinst_LIBRARIES = libinterface.a
 
+if W32G_GUI
+libinterface_a_SOURCES =
+else
 libinterface_a_SOURCES = \
 	dumb_c.c \
 	wrdt_dumb.c \
 	wrdt_tty.c
+endif
 
 EXTRA_libinterface_a_SOURCES = \
 	ncurs_c.c \
@@ -46,10 +50,17 @@ EXTRA_libinterface_a_SOURCES = \
 	vt100.h \
 	vt100.c \
 	vt100_c.c \
+	x_trace.c \
+	x_trace.h \
 	xaw.h \
+	xaw_p.h \
 	xaw_c.c \
 	xaw_i.c \
 	xaw_redef.c \
+	TiMidity.ad \
+	TiMidity-uj.ad \
+	xdnd.c \
+	xdnd.h \
 	xskin.h \
 	xskin_c.c \
 	xskin_i.c \
@@ -64,7 +75,6 @@ EXTRA_libinterface_a_SOURCES = \
 	VTparse.h \
 	x_mag.c \
 	x_mag.h \
-	dynamic_c.c \
 	mac_c.c \
 	mac_c.h \
 	mac_mag.c \
@@ -82,10 +92,6 @@ EXTRA_libinterface_a_SOURCES = \
 	soundspec.h \
 	x_sherry.c \
 	x_sherry.h \
-	check.xbm \
-	arrow.xbm \
-	on.xbm \
-	off.xbm \
 	server_c.c \
 	server_defs.h \
 	alsaseq_c.c \
@@ -121,10 +127,12 @@ EXTRA_libinterface_a_SOURCES = \
 	w32g_dib.c \
 	w32g_dib.h \
 	winsyn_c.c \
+	npsyn_c.c \
 	rtsyn.h \
 	rtsyn_common.c \
 	rtsyn_winmm.c \
 	rtsyn_portmidi.c \
+	rtsyn_npipe.c\
 	portmidisyn_c.c
 
 if ENABLE_WRD
@@ -136,15 +144,15 @@ WRD_OBJS = \
 	x_sherry.$(OBJEXT)
 endif
 
-if CYGNUS
-WRD_WINCON_OBJS = wrdt_wcon.$(OBJEXT)
-endif
-if MSYS
-WRD_WINCON_OBJS2 = wrdt_wcon.$(OBJEXT)
+if ENABLE_XDND
+XDND_SO = xdnd.${so}
 endif
 
-if NEEDDLOPEN
-DYNAMIC_OBJS = dynamic_c.$(OBJEXT)
+if MSYS
+if W32G_GUI
+else
+WRD_WINCON_OBJS = wrdt_wcon.$(OBJEXT)
+endif
 endif
 
 if ENABLE_SOUND_SPEC
@@ -166,8 +174,6 @@ libinterface_LIBADD = \
 	$(INTERFACE_OBJS) \
 	$(WRD_OBJS) \
 	$(WRD_WINCON_OBJS) \
-	$(WRD_WINCON_OBJS2) \
-	$(DYNAMIC_OBJS) \
 	$(SOUND_SPEC_OBJS)
 	
 libinterface_a_LIBADD=$(libinterface_LIBADD)
@@ -201,9 +207,23 @@ if WATCOM_C
 	done
 	if test -f interface.lib ; then touch $@ ; fi
 else
+if DMC
+	rm -f libinterface.a
+	rm -f interface.lib
+	start lib -c interface.lib  $(libinterface_a_OBJECTS) $(libinterface_LIBADD)
+	if test -f interface.lib ; then touch $@ ; fi
+else
+if POCC
+	rm -f libinterface.a
+	rm -f interface.lib
+	polib -OUT:interface.lib  $(libinterface_a_OBJECTS) $(libinterface_LIBADD)
+	if test -f interface.lib ; then touch $@ ; fi
+else
 	rm -f libinterface.a
 	$(AR) cru libinterface.a $(libinterface_a_OBJECTS) $(libinterface_a_LIBADD)
 	$(RANLIB) libinterface.a
+endif
+endif
 endif
 endif
 endif
@@ -220,23 +240,16 @@ EXTRA_DIST = \
 	tkpanel.tcl \
 	browser.tcl \
 	misc.tcl \
-	timidity.el \
-	tclIndex \
-	interface_A.txt \
-	interface_T.txt \
-	interface_a.txt \
-	interface_e.txt \
-	interface_g.txt \
-	interface_i.txt \
-	interface_k.txt \
-	interface_m.txt \
-	interface_n.txt \
-	interface_s.txt
+	timidity.pel
 
 .ptcl.tcl:
 	sed -e 's@%TCL_DIR%@$(TCL_DIR)@g' $< > $@
+.pel.el:
+	sed -e 's@%BIN_DIR%@$(bindir)@g' $< > $@
 clean:
 	rm -f tkmidity.tcl
+	rm -f tclIndex
+	rm -f timidity.el
 	rm -f *.$(OBJEXT)
 	rm -f *.$(so)
 	rm -f *.res
@@ -247,7 +260,7 @@ clean:
 
 tclIndex: $(TCLSRCS)
 	rm -f tclIndex
-	echo 'auto_mkindex . *.tcl; exit' | $(WISH)
+	echo 'auto_mkindex $(srcdir) *.tcl; exit' | $(TCLSH)
 
 if ENABLE_TCLTK
 install_tk = install.tk
@@ -263,11 +276,17 @@ if ENABLE_DYNAMIC_XAW
 install_xaw = install.xaw
 endif
 
-install.tk: $(ALLTCLF) install.bitmaps
+install.tk: $(ALLTCLF)
 	test -d $(DESTDIR)$(TCL_DIR) || mkdir -p $(DESTDIR)$(TCL_DIR)
 	for f in $(ALLTCLF) ''; do case ".$$f" in .);; *) $(INSTALL_DATA) $$f $(DESTDIR)$(TCL_DIR);; esac; done
 
-install.xaw: install.bitmaps
+install.xaw:
+if XAW_INSTALL_RESOURCE_FILES
+	test -d ${DESTDIR}${XAWRES} || mkdir -p ${DESTDIR}${XAWRES}
+	test -d ${DESTDIR}${XAWRES_JA} || mkdir -p ${DESTDIR}${XAWRES_JA}
+	cp ${top_srcdir}/interface/TiMidity.ad ${DESTDIR}${XAWRES}/TiMidity
+	cp ${top_srcdir}/interface/TiMidity-uj.ad ${DESTDIR}${XAWRES_JA}/TiMidity
+endif
 
 install.bitmaps:
 	cd bitmaps; $(MAKE) install.bitmaps
@@ -285,34 +304,46 @@ install.el: $(ELFILES)
 if VCPP
 w32g_res.res: w32g_res.h w32g_rec.h w32g_res.rc \
 	w32g_btn.bmp w32g_icon.ico w32g_sleep.bmp w32g_subbtn.bmp 
-	rc w32g_res.rc
+	rc -l0x11 w32g_res.rc
 else
 if WATCOM_C
 w32g_res.res: w32g_res.h w32g_rec.h w32g_res.rc \
 	w32g_btn.bmp w32g_icon.ico w32g_sleep.bmp w32g_subbtn.bmp 
-	rc w32g_res.rc
+	rc -l0x11 w32g_res.rc
+else
+if DMC
+w32g_res.res: w32g_res.h w32g_rec.h w32g_res.rc \
+	w32g_btn.bmp w32g_icon.ico w32g_sleep.bmp w32g_subbtn.bmp 
+	rc -D__NT__ -l0x11 w32g_res.rc
+else
+if POCC
+w32g_res.res: w32g_res.h w32g_rec.h w32g_res.rc \
+	w32g_btn.bmp w32g_icon.ico w32g_sleep.bmp w32g_subbtn.bmp 
+	porc  w32g_res.rc
 else
 if BORLANDC
 w32g_res.res: w32g_res.h w32g_rec.h w32g_res.rc \
 	w32g_btn.bmp w32g_icon.ico w32g_sleep.bmp w32g_subbtn.bmp
 	perl -pe 's/(^FONT.*".*").*$$/$$1/' w32g_res.rc >w32g_res_bc.rc
-	brcc32 -ic:/borland/bcc55/include w32g_res_bc.rc
+	brcc32 -iC:/Borland/BDS/4.0/include w32g_res_bc.rc
 	mv w32g_res_bc.RES w32g_res.res
 	rm w32g_res_bc.rc
 else
 w32g_syn_escaped.c:w32g_syn.c escape_sjis.pl
-	escape_sjis.pl < w32g_syn.c > w32g_syn_escaped.c
+	./escape_sjis.pl < w32g_syn.c > w32g_syn_escaped.c
 
 w32g_subwin_escaped.c:w32g_subwin.c escape_sjis.pl
-	escape_sjis.pl < w32g_subwin.c > w32g_subwin_escaped.c
+	./escape_sjis.pl < w32g_subwin.c > w32g_subwin_escaped.c
 
 w32g_res.res: w32g_res.h w32g_rec.h w32g_res.rc \
 	w32g_btn.bmp w32g_icon.ico w32g_sleep.bmp w32g_subbtn.bmp \
 	escape_sjis.pl
-	escape_sjis.pl <w32g_res.rc >w32g_res_escaped.rc
+	./escape_sjis.pl <w32g_res.rc >w32g_res_escaped.rc
 	windres -o $@ -O coff w32g_res.rc 2>&1|grep escape - >/dev/null && \
 	windres -o $@ -O coff w32g_res_escaped.rc || echo
 	rm w32g_res_escaped.rc
+endif
+endif
 endif
 endif
 endif
@@ -345,7 +376,7 @@ all-am: $(dynamic_targets)
 
 install.dynamics: $(dynamic_targets)
 	test -d $(DESTDIR)$(SHLIB_DIR) || mkdir -p $(DESTDIR)$(SHLIB_DIR)
-	for f in $(dynamic_targets) ''; do case ".$$f" in .);; *) $(INSTALL_PROGRAM) $$f $(DESTDIR)$(SHLIB_DIR) ; $(INSTALL_DATA) $${f%%$(so)}txt $(DESTDIR)$(SHLIB_DIR);; esac; done
+	for f in $(dynamic_targets) ''; do case ".$$f" in .);; *) $(INSTALL_PROGRAM) $$f $(DESTDIR)$(SHLIB_DIR) ;; esac; done
 
 .c.$(so):
 	$(COMPILE) $(SHCFLAGS) -c $< -o $@
@@ -362,37 +393,37 @@ url_buff.$(so): $(top_srcdir)/libarc/url_buff.c
 support.$(so): $(top_srcdir)/utils/support.c
 	$(COMPILE) $(SHCFLAGS) -o $@ -c $<
 
-interface_n.$(so): ncurs_c.$(so) support.$(so) bitset.$(so) timer.$(so)
+if_ncurses.$(so): ncurs_c.$(so) support.$(so) bitset.$(so) timer.$(so)
 	$(SHLD) -o $@ ncurs_c.$(so) support.$(so) bitset.$(so) timer.$(so) $(n_so_libs)
 
-interface_s.$(so): slang_c.$(so) support.$(so) timer.$(so)
+if_slang.$(so): slang_c.$(so) support.$(so) timer.$(so)
 	$(SHLD) -o $@ slang_c.$(so) support.$(so) timer.$(so) $(s_so_libs)
 
-interface_m.$(so): motif_c.$(so) support.$(so) motif_i.$(so) motif_p.$(so)
+if_motif.$(so): motif_c.$(so) support.$(so) motif_i.$(so) motif_p.$(so)
 	$(SHLD) -o $@ motif_c.$(so) support.$(so) motif_i.$(so) motif_p.$(so) $(m_so_libs)
 
-interface_k.$(so): tk_c.$(so) support.$(so)
+if_tcltk.$(so): tk_c.$(so) support.$(so)
 	$(SHLD) -o $@ tk_c.$(so) support.$(so) $(k_so_libs)
 
-interface_e.$(so): emacs_c.$(so) support.$(so)
+if_emacs.$(so): emacs_c.$(so) support.$(so)
 	$(SHLD) -o $@ emacs_c.$(so) support.$(so) $(e_so_libs)
 
-interface_T.$(so): vt100_c.$(so) support.$(so) vt100.$(so) bitset.$(so) timer.$(so)
+if_vt100.$(so): vt100_c.$(so) support.$(so) vt100.$(so) bitset.$(so) timer.$(so)
 	$(SHLD) -o $@ vt100_c.$(so) support.$(so) vt100.$(so) bitset.$(so) timer.$(so) $(T_so_libs)
 
-interface_a.$(so): xaw_c.$(so) support.$(so) xaw_i.$(so) timer.$(so)
-	$(SHLD) -o $@ xaw_c.$(so) support.$(so) xaw_i.$(so) timer.$(so) $(a_so_libs)
+if_xaw.$(so): xaw_c.$(so) support.$(so) xaw_i.$(so) x_trace.${so} timer.$(so) ${XDND_SO}
+	$(SHLD) -o $@ xaw_c.$(so) support.$(so) xaw_i.$(so) x_trace.${so} timer.$(so) ${XDND_SO} $(a_so_libs)
 
-interface_i.$(so): xskin_c.$(so) support.$(so) xskin_i.$(so) xskin_loadBMP.$(so) xskin_spectrum.$(so) url_buff.$(so)
+if_xskin.$(so): xskin_c.$(so) support.$(so) xskin_i.$(so) xskin_loadBMP.$(so) xskin_spectrum.$(so) url_buff.$(so)
 	$(SHLD) -o $@ xskin_c.$(so) support.$(so) xskin_i.$(so) xskin_loadBMP.$(so) xskin_spectrum.$(so) url_buff.$(so) $(i_so_libs)
 
-interface_g.$(so): gtk_c.$(so) support.$(so) gtk_i.$(so) gtk_p.$(so)
+if_gtk.$(so): gtk_c.$(so) support.$(so) gtk_i.$(so) gtk_p.$(so)
 	$(SHLD) -o $@ gtk_c.$(so) support.$(so) gtk_i.$(so) gtk_p.$(so) $(g_so_libs)
 
-interface_r.$(so): server_c.$(so) support.$(so)
+if_server.$(so): server_c.$(so) support.$(so)
 	$(SHLD) -o $@ server_c.$(so) support.$(so)
 
-interface_A.$(so): alsaseq_c.$(so) support.$(so)
+if_alsaseq.$(so): alsaseq_c.$(so) support.$(so)
 	$(SHLD) -o $@ alsaseq_c.$(so) support.$(so)
 
 endif

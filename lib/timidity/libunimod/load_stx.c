@@ -20,7 +20,7 @@
 
 /*==============================================================================
 
-  $Id: load_stx.c,v 1.12 1999/10/25 16:31:41 miod Exp $
+  $Id$
 
   STMIK 0.2 (STX) module loader
 
@@ -294,7 +294,7 @@ STX_Load (BOOL curious)
   int t, u, track = 0;
   int version = 0;
   SAMPLE *q;
-  char *tracker;
+  const char *tracker;
 
   /* try to read module header */
   _mm_read_string (mh->songname, 20, modreader);

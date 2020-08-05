@@ -30,9 +30,18 @@
 #ifndef ___REVERB_H_
 #define ___REVERB_H_
 
+#ifndef REVERB_PRIVATE
+#define EXTERN extern
+#else 
+#define EXTERN
+#endif
+
 #define DEFAULT_REVERB_SEND_LEVEL 40
 
 extern int opt_reverb_control;
+extern FLOAT_T reverb_predelay_factor;
+extern FLOAT_T freeverb_scaleroom;
+extern FLOAT_T freeverb_offsetroom;
 
 extern void set_dry_signal(int32 *, int32);
 extern void set_dry_signal_xg(int32 *, int32, int32);
@@ -45,7 +54,7 @@ extern void free_effect_buffers(void);
 /*! simple delay */
 typedef struct {
 	int32 *buf, size, index;
-} delay;
+} simple_delay;
 
 /*! Pink Noise Generator */
 typedef struct {
@@ -219,7 +228,7 @@ enum {
 #define MAGIC_INIT_EFFECT_INFO -1
 #define MAGIC_FREE_EFFECT_INFO -2
 
-struct insertion_effect_gs_t {
+EXTERN struct insertion_effect_gs_t {
 	int32 type;
 	int8 type_lsb, type_msb, parameter[20], send_reverb,
 		send_chorus, send_delay, control_source1, control_depth1,
@@ -237,7 +246,7 @@ enum {
 #define XG_INSERTION_EFFECT_NUM 2
 #define XG_VARIATION_EFFECT_NUM 1
 
-struct effect_xg_t insertion_effect_xg[XG_INSERTION_EFFECT_NUM],
+EXTERN struct effect_xg_t insertion_effect_xg[XG_INSERTION_EFFECT_NUM],
 	variation_effect_xg[XG_VARIATION_EFFECT_NUM], reverb_status_xg, chorus_status_xg;
 
 typedef struct _EffectList {
@@ -329,7 +338,7 @@ typedef struct {
 
 /*! HEXA-CHORUS */
 typedef struct {
-	delay buf0;
+	simple_delay buf0;
 	lfo lfo0;
 	double dry, wet, level;
 	int32 pdelay, depth;	/* in samples */
@@ -344,7 +353,7 @@ typedef struct {
 
 /*! Plate Reverb */
 typedef struct {
-	delay pd, od1l, od2l, od3l, od4l, od5l, od6l, od7l,
+	simple_delay pd, od1l, od2l, od3l, od4l, od5l, od6l, od7l,
 		od1r, od2r, od3r, od4r, od5r, od6r, od7r,
 		td1, td2, td1d, td2d;
 	lfo lfo1, lfo1d;
@@ -360,7 +369,7 @@ typedef struct {
 typedef struct {
 	int32 spt0, spt1, spt2, spt3, rpt0, rpt1, rpt2, rpt3;
 	int32 ta, tb, HPFL, HPFR, LPFL, LPFR, EPFL, EPFR;
-	delay buf0_L, buf0_R, buf1_L, buf1_R, buf2_L, buf2_R, buf3_L, buf3_R;
+	simple_delay buf0_L, buf0_R, buf1_L, buf1_R, buf2_L, buf2_R, buf3_L, buf3_R;
 	double fbklev, nmixlev, cmixlev, monolev, hpflev, lpflev, lpfinp, epflev, epfinp, width, wet;
 	int32 fbklevi, nmixlevi, cmixlevi, monolevi, hpflevi, lpflevi, lpfinpi, epflevi, epfinpi, widthi, weti;
 } InfoStandardReverb;
@@ -370,7 +379,7 @@ typedef struct {
 #define numallpasses 4
 
 typedef struct {
-	delay pdelay;
+	simple_delay pdelay;
 	double roomsize, roomsize1, damp, damp1, wet, wet1, wet2, width;
 	comb combL[numcombs], combR[numcombs];
 	allpass allpassL[numallpasses], allpassR[numallpasses];
@@ -380,7 +389,7 @@ typedef struct {
 
 /*! 3-Tap Stereo Delay Effect */
 typedef struct {
-	delay delayL, delayR;
+	simple_delay delayL, delayR;
 	int32 size[3], index[3];
 	double level[3], feedback, send_reverb;
 	int32 leveli[3], feedbacki, send_reverbi;
@@ -388,7 +397,7 @@ typedef struct {
 
 /*! Stereo Chorus Effect */
 typedef struct {
-	delay delayL, delayR;
+	simple_delay delayL, delayR;
 	lfo lfoL, lfoR;
 	int32 wpt0, spt0, spt1, hist0, hist1;
 	int32 rpt0, depth, pdelay;
@@ -398,7 +407,7 @@ typedef struct {
 
 /*! Chorus */
 typedef struct {
-	delay delayL, delayR;
+	simple_delay delayL, delayR;
 	lfo lfoL, lfoR;
 	int32 wpt0, spt0, spt1, hist0, hist1;
 	int32 rpt0, depth, pdelay;
@@ -417,7 +426,7 @@ typedef struct {
 
 /*! Delay L,C,R */
 typedef struct {
-	delay delayL, delayR;
+	simple_delay delayL, delayR;
 	int32 index[3], size[3];	/* L,C,R */
 	double rdelay, ldelay, cdelay, fdelay;	/* in ms */
 	double dry, wet, feedback, clevel, high_damp;
@@ -427,7 +436,7 @@ typedef struct {
 
 /*! Delay L,R */
 typedef struct {
-	delay delayL, delayR;
+	simple_delay delayL, delayR;
 	int32 index[2], size[2];	/* L,R */
 	double rdelay, ldelay, fdelay1, fdelay2;	/* in ms */
 	double dry, wet, feedback, high_damp;
@@ -437,7 +446,7 @@ typedef struct {
 
 /*! Echo */
 typedef struct {
-	delay delayL, delayR;
+	simple_delay delayL, delayR;
 	int32 index[2], size[2];	/* L1,R1 */
 	double rdelay1, ldelay1, rdelay2, ldelay2;	/* in ms */
 	double dry, wet, lfeedback, rfeedback, high_damp, level;
@@ -447,7 +456,7 @@ typedef struct {
 
 /*! Cross Delay */
 typedef struct {
-	delay delayL, delayR;
+	simple_delay delayL, delayR;
 	double lrdelay, rldelay;	/* in ms */
 	double dry, wet, feedback, high_damp;
 	int32 dryi, weti, feedbacki, input_select;
@@ -458,7 +467,7 @@ typedef struct {
 typedef struct {
 	int8 lofi_type, pan, pre_filter, post_filter;
 	double level, dry, wet;
-	int32 bit_mask, dryi, weti;
+	int32 bit_mask, level_shift, dryi, weti;
 	filter_biquad pre_fil, post_fil;
 } InfoLoFi1;
 
@@ -466,7 +475,7 @@ typedef struct {
 typedef struct {
 	int8 wp_sel, disc_type, hum_type, ms, pan, rdetune, lofi_type, fil_type;
 	double wp_level, rnz_lev, discnz_lev, hum_level, dry, wet, level;
-	int32 bit_mask, wp_leveli, rnz_levi, discnz_levi, hum_keveki, dryi, weti;
+	int32 bit_mask, level_shift, wp_leveli, rnz_levi, discnz_levi, hum_keveki, dryi, weti;
 	filter_biquad fil, wp_lpf, hum_lpf, disc_lpf;
 } InfoLoFi2;
 
@@ -474,7 +483,7 @@ typedef struct {
 typedef struct {
 	int8 output_gain, word_length, filter_type, bit_assign, emphasis;
 	double dry, wet;
-	int32 bit_mask, dryi, weti;
+	int32 bit_mask, level_shift, dryi, weti;
 	filter_biquad lpf, srf;
 } InfoLoFi;
 
@@ -523,7 +532,7 @@ extern void do_ch_eq_xg(int32 *, int32, struct part_eq_xg *);
 extern void do_multi_eq_xg(int32 *, int32);
 
 /* GS parameters of reverb effect */
-struct reverb_status_gs_t
+EXTERN struct reverb_status_gs_t
 {
 	/* GS parameters */
 	int8 character, pre_lpf, level, time, delay_feedback, pre_delay_time;
@@ -543,7 +552,7 @@ struct chorus_text_gs_t
 };
 
 /* GS parameters of chorus effect */
-struct chorus_status_gs_t
+EXTERN struct chorus_status_gs_t
 {
 	/* GS parameters */
 	int8 macro, pre_lpf, level, feedback, delay, rate, depth, send_reverb, send_delay;
@@ -555,7 +564,7 @@ struct chorus_status_gs_t
 } chorus_status_gs;
 
 /* GS parameters of delay effect */
-struct delay_status_gs_t
+EXTERN struct delay_status_gs_t
 {
 	/* GS parameters */
 	int8 type, level, level_center, level_left, level_right,
@@ -564,16 +573,16 @@ struct delay_status_gs_t
     double time_ratio_left, time_ratio_right;		/* in pct */
 
 	/* for pre-calculation */
-	int32 sample_c, sample_l, sample_r;
-	double level_ratio_c, level_ratio_l, level_ratio_r,
-		feedback_ratio, send_reverb_ratio;
+	int32 sample[3];	/* center, left, right */
+	double level_ratio[3];	/* center, left, right */
+	double feedback_ratio, send_reverb_ratio;
 
 	filter_lowpass1 lpf;
 	InfoDelay3 info_delay;
 } delay_status_gs;
 
 /* GS parameters of channel EQ */
-struct eq_status_gs_t
+EXTERN struct eq_status_gs_t
 {
 	/* GS parameters */
     int8 low_freq, high_freq, low_gain, high_gain;
@@ -582,7 +591,7 @@ struct eq_status_gs_t
 } eq_status_gs;
 
 /* XG parameters of Multi EQ */
-struct multi_eq_xg_t
+EXTERN struct multi_eq_xg_t
 {
 	/* XG parameters */
 	int8 type, gain1, gain2, gain3, gain4, gain5,
@@ -594,6 +603,8 @@ struct multi_eq_xg_t
 	filter_peaking eq1p, eq2p, eq3p, eq4p, eq5p;
 } multi_eq_xg;
 
-pink_noise global_pink_noise_light;
+EXTERN pink_noise global_pink_noise_light;
+
+#undef EXTERN
 
 #endif /* ___REVERB_H_ */

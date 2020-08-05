@@ -14,7 +14,7 @@
     GNU General Public License for more details.
 
     You should have received a copy of the GNU General Public License
-    along with this program; if not, write to the Free Software
+    along with this program; nclude <sys/stat.h>if not, write to the Free Software
     Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 
     au_a.c
@@ -26,6 +26,10 @@
 #include "config.h"
 #endif /* HAVE_CONFIG_H */
 #include <stdio.h>
+
+#ifdef __POCC__
+#include <sys/types.h>
+#endif //for off_t
 
 #ifdef __W32__
 #include <stdlib.h>
@@ -70,7 +74,7 @@ static int write_u32(uint32 value);
 #define dpm au_play_mode
 
 PlayMode dpm = {
-    8000, PE_MONO|PE_ULAW, PF_PCM_STREAM,
+    8000, PE_MONO|PE_ULAW, PF_PCM_STREAM|PF_FILE_OUTPUT,
     -1,
     {0,0,0,0,0},
     "Sun audio file", 'u',
@@ -91,7 +95,7 @@ static int write_u32(uint32 value)
 {
     int n;
     value = BE_LONG(value);
-    if((n = write(dpm.fd, &value, 4)) == -1)
+    if((n = std_write(dpm.fd, (char *)&value, 4)) == -1)
     {
 	ctl->cmsg(CMSG_ERROR, VERB_NORMAL, "%s: write: %s",
 		  dpm.name, strerror(errno));
@@ -104,7 +108,7 @@ static int write_u32(uint32 value)
 static int write_str(const char *s)
 {
     int n;
-    if((n = write(dpm.fd, s, strlen(s))) == -1)
+    if((n = std_write(dpm.fd, s, strlen(s))) == -1)
     {
 	ctl->cmsg(CMSG_ERROR, VERB_NORMAL, "%s: write: %s",
 		  dpm.name, strerror(errno));
@@ -243,8 +247,9 @@ static int open_output(void)
     dpm.encoding = validate_encoding(dpm.encoding, include_enc, exclude_enc);
 
     if(dpm.name == NULL) {
+      if (!current_file_info || !current_file_info->filename)
+        return -1;
       dpm.flag |= PF_AUTO_SPLIT_FILE;
-      dpm.name = NULL;
     } else {
       dpm.flag &= ~PF_AUTO_SPLIT_FILE;
       if(au_output_open(dpm.name, NULL) == -1)
@@ -287,7 +292,7 @@ static int output_data(char *buf, int32 bytes)
     if(dpm.fd == -1)
       return -1;
 
-    while(((n = write(dpm.fd, buf, bytes)) == -1) && errno == EINTR)
+    while(((n = std_write(dpm.fd, buf, bytes)) == -1) && errno == EINTR)
 	;
     if(n == -1)
     {
@@ -324,13 +329,11 @@ static int acntl(int request, void *arg)
   case PM_REQ_PLAY_START:
     if(dpm.flag & PF_AUTO_SPLIT_FILE)
       return auto_au_output_open(current_file_info->filename);
-    break;
+    return 0;
   case PM_REQ_PLAY_END:
-    if(dpm.flag & PF_AUTO_SPLIT_FILE) {
+    if(dpm.flag & PF_AUTO_SPLIT_FILE)
       close_output();
-      return 0;
-    }
-    break;
+    return 0;
   case PM_REQ_DISCARD:
     return 0;
   }

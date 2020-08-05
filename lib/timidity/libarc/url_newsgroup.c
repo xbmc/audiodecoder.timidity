@@ -21,6 +21,9 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif /* HAVE_CONFIG_H */
+#ifdef __POCC__
+#include <sys/types.h>
+#endif //for off_t
 #include <stdio.h>
 #include <stdlib.h>
 #ifdef HAVE_UNISTD_H
@@ -101,7 +104,7 @@ URL url_newsgroup_open(char *name)
     int n;
 
 #ifdef DEBUG
-    printf("url_newsgroup_open(%s)\n", name);
+    fprintf(stderr, "url_newsgroup_open(%s)\n", name);
 #endif /* DEBUG */
 
     if((urlname = safe_strdup(name)) == NULL)
@@ -169,11 +172,11 @@ URL url_newsgroup_open(char *name)
 	*range++ = '\0';
 
 #ifdef DEBUG
-    printf("group: %s\n", group);
+    fprintf(stderr, "group: %s\n", group);
 #endif /* DEBUG */
 
 #ifdef DEBUG
-    printf("open(host=`%s', port=`%d')\n", host, port);
+    fprintf(stderr, "open(host=`%s', port=`%d')\n", host, port);
 #endif /* DEBUG */
 
 #ifdef __W32__
@@ -222,7 +225,7 @@ URL url_newsgroup_open(char *name)
     }
 
 #ifdef DEBUG
-    printf("Connect status: %s", buff);
+    fprintf(stderr, "Connect status: %s", buff);
 #endif /* DEBUG */
 
     if(buff[0] != NNTP_OK_ID)
@@ -236,7 +239,7 @@ URL url_newsgroup_open(char *name)
     sprintf(buff, "GROUP %s\r\n", group);
 
 #ifdef DEBUG
-    printf("CMD> %s", buff);
+    fprintf(stderr, "CMD> %s", buff);
 #endif /* DEBUG */
 
     socket_write(fd, buff, (long)strlen(buff));
@@ -249,7 +252,7 @@ URL url_newsgroup_open(char *name)
     }
 
 #ifdef DEBUG
-    printf("CMD< %s", buff);
+    fprintf(stderr, "CMD< %s", buff);
 #endif /* DEBUG */
 
     if(buff[0] != NNTP_OK_ID)
@@ -356,7 +359,7 @@ static char *url_newsgroup_gets(URL url, char *buff, int n)
 	    sprintf(linebuff, "%s %d-%d\r\n", xover_commands[i],
 		    urlp->first, urlp->last);
 #ifdef DEBUG
-	    printf("CMD> %s", linebuff);
+	    fprintf(stderr, "CMD> %s", linebuff);
 #endif /* DEBUG */
 	    socket_write(urlp->fd, linebuff, (long)strlen(linebuff));
 	    if(socket_fgets(linebuff, sizeof(linebuff), urlp->fp) == NULL)
@@ -365,7 +368,7 @@ static char *url_newsgroup_gets(URL url, char *buff, int n)
 		return NULL;
 	    }
 #ifdef DEBUG
-	    printf("CMD< %s", linebuff);
+	    fprintf(stderr, "CMD< %s", linebuff);
 #endif /* DEBUG */
 	    if(linebuff[0] == NNTP_OK_ID)
 	    {
@@ -386,7 +389,7 @@ static char *url_newsgroup_gets(URL url, char *buff, int n)
 	{
 	    sprintf(linebuff, "STAT %d\r\n", i);
 #ifdef DEBUG
-	    printf("CMD> %s", linebuff);
+	    fprintf(stderr, "CMD> %s", linebuff);
 #endif /* DEBUG */
 	    socket_write(urlp->fd, linebuff, (long)strlen(linebuff));
 	    if(socket_fgets(linebuff, sizeof(linebuff), urlp->fp) == NULL)
@@ -395,7 +398,7 @@ static char *url_newsgroup_gets(URL url, char *buff, int n)
 		return NULL;
 	    }
 #ifdef DEBUG
-	    printf("CMD< %s", linebuff);
+	    fprintf(stderr, "CMD< %s", linebuff);
 #endif /* DEBUG */
 	    if(atoi(linebuff) != 423)
 		break;
@@ -428,7 +431,7 @@ static char *url_newsgroup_gets(URL url, char *buff, int n)
     }
     p = linebuff;
 #ifdef DEBUG
-    printf("line: %s", linebuff);
+    fprintf(stderr, "line: %s", linebuff);
 #endif /* DEBUG */
 
     if(urlp->xover == 0)

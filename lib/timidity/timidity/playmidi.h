@@ -125,6 +125,7 @@ enum midi_event_t
 #if 0
 	ME_VOLUME_ONOFF,		/* Not supported */
 #endif
+	ME_MASTER_TUNING,		/* Master tuning */
 	ME_SCALE_TUNING,		/* Scale tuning */
 	ME_BULK_TUNING_DUMP,	/* Bulk tuning dump */
 	ME_SINGLE_NOTE_TUNING,	/* Single-note tuning */
@@ -148,6 +149,7 @@ enum midi_event_t
 	ME_MASTER_VOLUME,
 	ME_RESET,				/* Reset and change system mode */
 	ME_NOTE_STEP,
+	ME_CUEPOINT,			/* skip to time segment */
 	
 	ME_TIMESIG,				/* Time signature */
 	ME_KEYSIG,				/* Key signature */
@@ -506,6 +508,7 @@ extern Voice *voice;
 
 /* --module */
 extern int opt_default_module;
+extern int opt_preserve_silence;
 
 enum {
 	MODULE_TIMIDITY_DEFAULT = 0x0,
@@ -527,15 +530,15 @@ enum {
 	MODULE_TIMIDITY_DEBUG = 0x7f,
 };
 
-static inline int get_module() {return opt_default_module;}
+static inline int get_module(void) {return opt_default_module;}
 
-static inline int is_gs_module()
+static inline int is_gs_module(void)
 {
 	int module = get_module();
     return (module >= MODULE_SC55 && module <= MODULE_MU100);
 }
 
-static inline int is_xg_module()
+static inline int is_xg_module(void)
 {
 	int module = get_module();
     return (module >= MODULE_MU50 && module <= MODULE_MU100);
@@ -605,13 +608,13 @@ extern int opt_user_volume_curve;
 extern int opt_pan_delay;
 
 extern int play_midi_file(char *fn);
-extern void dumb_pass_playing_list(int number_of_files, char *list_of_files[]);
+extern int dumb_pass_playing_list(int number_of_files, char *list_of_files[]);
 extern void default_ctl_lyric(int lyricid);
 extern int check_apply_control(void);
 extern void recompute_freq(int v);
 extern int midi_drumpart_change(int ch, int isdrum);
 extern void ctl_note_event(int noteID);
-extern void ctl_mode_event(int type, int trace, long arg1, long arg2);
+extern void ctl_mode_event(int type, int trace, ptr_size_t arg1, ptr_size_t arg2);
 extern char *channel_instrum_name(int ch);
 extern int get_reverb_level(int ch);
 extern int get_chorus_level(int ch);
@@ -619,6 +622,7 @@ extern void playmidi_output_changed(int play_state);
 extern Instrument *play_midi_load_instrument(int dr, int bk, int prog);
 extern void midi_program_change(int ch, int prog);
 extern void free_voice(int v);
+extern void free_reverb_buffer(void);
 extern void play_midi_setup_drums(int ch,int note);
 
 /* For stream player */

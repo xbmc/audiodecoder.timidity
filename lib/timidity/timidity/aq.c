@@ -21,10 +21,13 @@
 	      Written by Masanao Izumo <mo@goice.co.jp>
 */
 
-#if HAVE_CONFIG_H
+#ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif /* HAVE_CONFIG_H */
 
+#ifdef __POCC__
+#include <sys/types.h>
+#endif //for off_t
 #include <stdio.h>
 #include <stdlib.h>
 #ifdef HAVE_UNISTD_H
@@ -82,6 +85,7 @@ static AudioBucket *head = NULL;
 static AudioBucket *tail = NULL;
 
 static void alloc_soft_queue(void);
+static void set_bucket_size(int size);
 static int add_play_bucket(const char *buf, int n);
 static void reuse_audio_bucket(AudioBucket *bucket);
 static AudioBucket *next_allocated_bucket(void);
@@ -92,7 +96,7 @@ static int32 estimate_queue_size(void);
 
 /* effect.c */
 extern void init_effect(void);
-extern int do_effect(int32* buf, int32 count);
+extern void do_effect(int32* buf, int32 count);
 
 int aq_calc_fragsize(void)
 {
@@ -127,7 +131,7 @@ int aq_calc_fragsize(void)
 
 void aq_setup(void)
 {
-    int ch;
+    int ch, frag_size;
 
     /* Initialize Bps, bucket_size, device_qsize, and bucket_time */
 
@@ -142,8 +146,9 @@ void aq_setup(void)
     else
 	Bps = ch;
 
-    if(play_mode->acntl(PM_REQ_GETFRAGSIZ, &bucket_size) == -1)
-	bucket_size = audio_buffer_size * Bps;
+    if(play_mode->acntl(PM_REQ_GETFRAGSIZ, &frag_size) == -1)
+	frag_size = audio_buffer_size * Bps;
+    set_bucket_size(frag_size);
     bucket_time = (double)bucket_size / Bps / play_mode->rate;
 
     if(IS_STREAM_TRACE)
@@ -166,12 +171,7 @@ void aq_setup(void)
     else
     {
 	device_qsize = 0;
-	if(base_buckets)
-	{
-	    free(base_buckets[0].data);
-	    free(base_buckets);
-	    base_buckets = NULL;
-	}
+	free_soft_queue();
 	nbuckets = 0;
     }
 
@@ -263,7 +263,7 @@ static int32 estimate_queue_size(void)
 	{
 	    ctl->cmsg(CMSG_ERROR, VERB_NOISY,
 		      "Can't estimate audio queue length");
-	    bucket_size = audio_buffer_size * Bps;
+	    set_bucket_size(audio_buffer_size * Bps);
 	    free(nullsound);
 	    return 2 * audio_buffer_size * Bps;
 	}
@@ -271,7 +271,7 @@ static int32 estimate_queue_size(void)
 	ctl->cmsg(CMSG_WARNING, VERB_DEBUG,
 		  "Retry to estimate audio queue length (%d times)",
 		  ntries);
-	bucket_size /= 2;
+	set_bucket_size(bucket_size / 2);
 	ntries++;
 	goto retry;
     }
@@ -364,24 +364,38 @@ int aq_add(int32 *samples, int32 count)
     return 0;
 }
 
+static void set_bucket_size(int size)
+{
+    if (size == bucket_size)
+	return;
+    bucket_size = size;
+    if (nbuckets != 0)
+	alloc_soft_queue();
+}
+
 /* alloc_soft_queue() (re-)initializes audio buckets. */
 static void alloc_soft_queue(void)
 {
     int i;
     char *base;
 
-    if(base_buckets)
-    {
-	free(base_buckets[0].data);
-	free(base_buckets);
-	base_buckets = NULL;
-    }
+    free_soft_queue();
 
     base_buckets = (AudioBucket *)safe_malloc(nbuckets * sizeof(AudioBucket));
     base = (char *)safe_malloc(nbuckets * bucket_size);
     for(i = 0; i < nbuckets; i++)
 	base_buckets[i].data = base + i * bucket_size;
     flush_buckets();
+}
+
+void free_soft_queue(void)
+{
+    if(base_buckets)
+    {
+	free(base_buckets[0].data);
+	free(base_buckets);
+	base_buckets = NULL;
+    }
 }
 
 /* aq_fill_one() transfers one audio bucket to device. */

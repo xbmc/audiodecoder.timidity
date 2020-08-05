@@ -21,6 +21,9 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif /* HAVE_CONFIG_H */
+#ifdef __POCC__
+#include <sys/types.h>
+#endif /* for off_t */
 #include <stdio.h>
 #include <stdlib.h>
 #ifndef NO_STRING_H
@@ -71,7 +74,6 @@
 #define O_BINARY 0
 #endif
 
-
 typedef struct _URL_file
 {
     char common[sizeof(struct _URL)];
@@ -113,12 +115,6 @@ static int name_file_check(char *s)
 
     if(strncasecmp(s, "file:", 5) == 0)
 	return 1;
-
-	if(strncasecmp(s, "filereader:", 10) == 0)
-    return 1;
-
-    if(strncasecmp(s, "special:", 8) == 0)
-    return 1;
 
 #ifdef __W32__
     /* [A-Za-z]: (for Windows) */
@@ -214,11 +210,11 @@ URL url_file_open(char *fname)
     long mapsize;
     FILE *fp;			/* Non NULL if mmap is failure */
 #ifdef __W32__
-    HANDLE hFile, hMap;
+    HANDLE hFile = INVALID_HANDLE_VALUE, hMap = INVALID_HANDLE_VALUE;
 #endif /* __W32__ */
 
 #ifdef DEBUG
-    printf("url_file_open(%s)\n", fname);
+    fprintf(stderr, "url_file_open(%s)\n", fname);
 #endif /* DEBUG */
 
     if(!strcmp(fname, "-"))
@@ -250,10 +246,10 @@ URL url_file_open(char *fname)
 
 #ifdef DEBUG
     if(mapptr != NULL)
-	printf("mmap - success. size=%d\n", mapsize);
+	fprintf(stderr, "mmap - success. size=%d\n", mapsize);
 #ifdef HAVE_MMAP
     else
-	printf("mmap - failure.\n");
+	fprintf(stderr, "mmap - failure.\n");
 #endif
 #endif /* DEBUG */
 

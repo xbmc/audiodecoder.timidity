@@ -66,6 +66,9 @@ int WINAPI timeKillEvent(UINT uTimerID);
 
 #ifdef TWSYNSRV
 #include <winsvc.h>
+#ifdef __DMC__
+#define SERVICE_ACCEPT_PARAMCHANGE    8
+#endif
 //#include <lmcons.h>
 #include <stdarg.h>
 #endif
@@ -209,7 +212,7 @@ static int w32g_syn_create_win ( void );
 #define IDM_TIMIDITY 127
 
 #ifdef HAVE_SYN_CONSOLE
-static HWND hConsoleWnd;
+HWND hConsoleWnd;
 void InitConsoleWnd(HWND hParentWnd);
 #endif // HAVE_SYN_CONSOLE
 
@@ -281,7 +284,7 @@ static void terminate_syn_thread ( void );
 static int wait_for_termination_of_syn_thread ( void );
 int w32g_message_set ( int cmd );
 int w32g_message_get ( w32g_syn_message_t *msg );
-void w32g_syn_ctl_pass_playing_list ( int n_, char *args_[] );
+int w32g_syn_ctl_pass_playing_list ( int n_, char *args_[] );
 int w32g_syn_do_before_pref_apply ( void );
 int w32g_syn_do_after_pref_apply ( void );
 
@@ -457,6 +460,7 @@ void DeleteTasktrayIcon(HWND hwnd)
 	nid.cbSize = sizeof ( NOTIFYICONDATA );
 	nid.hWnd = w32g_syn.nid_hWnd; 
 	nid.uID = w32g_syn.nid_uID; 
+	nid.uFlags = 0;
 	for ( i = 1; i <= 10; i ++ ) {
 		bRes = Shell_NotifyIcon ( NIM_DELETE, &nid );
 		if ( bRes == TRUE )
@@ -574,13 +578,13 @@ SynWinProc(HWND hwnd, UINT uMess, WPARAM wParam, LPARAM lParam)
 				hMenuSynPriority = CreateMenu ();
 				if (PlayerLanguage == LANGUAGE_JAPANESE) {
 					if ( w32g_syn_status == run ) {
-						AppendMenu ( hMenu, MF_STRING, IDM_STOP, "シンセ停止");
+						AppendMenu ( hMenu, MF_STRING, IDM_STOP, "シンセ停止(&S)");
 					} else if ( w32g_syn_status == stop ) {
-						AppendMenu ( hMenu, MF_STRING, IDM_START, "シンセ開始");
+						AppendMenu ( hMenu, MF_STRING, IDM_START, "シンセ開始(&S)");
 					} else if ( w32g_syn_status == quit ) { 
 						AppendMenu ( hMenu, MF_STRING | MF_GRAYED, IDM_START, "終了中……");
 					}
-					AppendMenu ( hMenu, MF_STRING, IDM_SYSTEM_RESET, "システムリセット");
+					AppendMenu ( hMenu, MF_STRING, IDM_SYSTEM_RESET, "システムリセット(&R)");
 					switch ( rtsyn_system_mode ) {
 					case GM_SYSTEM_MODE:
 						AppendMenu ( hMenuReset, MF_STRING | MF_CHECKED, IDM_GM_SYSTEM_RESET, "GM リセット");
@@ -641,22 +645,22 @@ SynWinProc(HWND hwnd, UINT uMess, WPARAM wParam, LPARAM lParam)
 					AppendMenu ( hMenu, MF_POPUP, (UINT)hMenuProcessPriority, "プロセスプライオリティ設定" );
 					AppendMenu ( hMenu, MF_POPUP, (UINT)hMenuSynPriority, "シンセスレッドプライオリティ設定" );
 					AppendMenu ( hMenu, MF_SEPARATOR, 0, 0 );
-					AppendMenu ( hMenu, MF_STRING, IDM_PREFERENCE, "設定");
-					AppendMenu ( hMenu, MF_STRING, IDM_CONSOLE_WND, "コンソール");
+					AppendMenu ( hMenu, MF_STRING, IDM_PREFERENCE, "設定(&P)...");
+					AppendMenu ( hMenu, MF_STRING, IDM_CONSOLE_WND, "コンソール(&C)");
 					AppendMenu ( hMenu, MF_SEPARATOR, 0, 0 );
 					AppendMenu ( hMenu, MF_STRING, IDM_VERSION, "バージョン情報");
-					AppendMenu ( hMenu, MF_STRING, IDM_TIMIDITY, "TiMidity++ について");
+					AppendMenu ( hMenu, MF_STRING, IDM_TIMIDITY, "TiMidity++ について(&A)");
 					AppendMenu ( hMenu, MF_SEPARATOR, 0, 0 );
-					AppendMenu ( hMenu, MF_STRING, IDM_QUIT, "終了");
+					AppendMenu ( hMenu, MF_STRING, IDM_QUIT, "終了(&X)");
 				} else {
 					if ( w32g_syn_status == run ) {
-						AppendMenu ( hMenu, MF_STRING, IDM_STOP, "Stop synthesizer");
+						AppendMenu ( hMenu, MF_STRING, IDM_STOP, "&Stop synthesizer");
 					} else if ( w32g_syn_status == stop ) {
-						AppendMenu ( hMenu, MF_STRING, IDM_START, "Start synthesizer");
+						AppendMenu ( hMenu, MF_STRING, IDM_START, "&Start synthesizer");
 					} else if ( w32g_syn_status == quit ) { 
 						AppendMenu ( hMenu, MF_STRING | MF_GRAYED, IDM_START, "Quitting...");
 					}
-					AppendMenu ( hMenu, MF_STRING, IDM_SYSTEM_RESET, "System Reset");
+					AppendMenu ( hMenu, MF_STRING, IDM_SYSTEM_RESET, "System &Reset");
 					switch ( rtsyn_system_mode ) {
 					case GM_SYSTEM_MODE:
 						AppendMenu ( hMenuReset, MF_STRING | MF_CHECKED, IDM_GM_SYSTEM_RESET, "GM Reset");
@@ -717,13 +721,13 @@ SynWinProc(HWND hwnd, UINT uMess, WPARAM wParam, LPARAM lParam)
 					AppendMenu ( hMenu, MF_POPUP, (UINT)hMenuProcessPriority, "Change process priority" );
 					AppendMenu ( hMenu, MF_POPUP, (UINT)hMenuSynPriority, "Change synthesizer thread priority" );
 					AppendMenu ( hMenu, MF_SEPARATOR, 0, 0 );
-					AppendMenu ( hMenu, MF_STRING, IDM_PREFERENCE, "Preference");
-					AppendMenu ( hMenu, MF_STRING, IDM_CONSOLE_WND, "Console");
+					AppendMenu ( hMenu, MF_STRING, IDM_PREFERENCE, "&Preferences...");
+					AppendMenu ( hMenu, MF_STRING, IDM_CONSOLE_WND, "&Console");
 					AppendMenu ( hMenu, MF_SEPARATOR, 0, 0 );
 					AppendMenu ( hMenu, MF_STRING, IDM_VERSION, "Version Info");
-					AppendMenu ( hMenu, MF_STRING, IDM_TIMIDITY, "About TiMidity++");
+					AppendMenu ( hMenu, MF_STRING, IDM_TIMIDITY, "&About TiMidity++");
 					AppendMenu ( hMenu, MF_SEPARATOR, 0, 0 );
-					AppendMenu ( hMenu, MF_STRING, IDM_QUIT, "Quit");
+					AppendMenu ( hMenu, MF_STRING, IDM_QUIT, "E&xit");
 				}
 				GetCursorPos ( &point );
 				// ポップアップメニューがきちんと消えるための操作。 
@@ -1180,7 +1184,7 @@ static BOOL InstallService()
 	if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, regKeyTwSynSrv,
 		0, KEY_WRITE | KEY_READ, &srvKey) == ERROR_SUCCESS)
 	{
-		if (RegSetValueEx(srvKey, "Description", NULL, REG_SZ,
+		if (RegSetValueEx(srvKey, "Description", (unsigned long int)NULL, REG_SZ,
 			(const BYTE *)serviceDescription, strlen(serviceDescription)) != ERROR_SUCCESS)
 		{
 			OutputWindowLastError("RegSetValueEx() != ERROR_SUCCESS");
@@ -1403,7 +1407,7 @@ void w32g_syn_doit(void)
 	}
 }
 
-void w32g_syn_ctl_pass_playing_list ( int n_, char *args_[] )
+int w32g_syn_ctl_pass_playing_list ( int n_, char *args_[] )
 {
 	int i;
 #ifndef TWSYNSRV
@@ -1471,6 +1475,7 @@ void w32g_syn_ctl_pass_playing_list ( int n_, char *args_[] )
 	}
 #endif
 	if ( w32g_syn.quit_state < 2 ) w32g_syn.quit_state = 2;
+	return 0;
 }
 
 int w32g_syn_do_before_pref_apply ( void )

@@ -20,7 +20,7 @@
 
 /*==============================================================================
 
-  $Id: mloader.c,v 1.33 1999/10/25 16:31:41 miod Exp $
+  $Id$
 
   These routines are used to access the available module loaders
 
@@ -309,8 +309,8 @@ SL_LoadInternal (void *buffer, UWORD infmt, UWORD outfmt, int scalefactor, ULONG
   int stodo, t, u;
 
   int result, c_block = 0;	/* compression bytes until next block */
-  ITPACK status;
-  UWORD incnt;
+  ITPACK status = { 0,0,0,0 };
+  UWORD incnt = 0;
 
   while (length)
     {
@@ -527,7 +527,7 @@ SL_RegisterSample (SAMPLE * s, URL reader)
 }
 
 static void 
-FreeSampleList ()
+FreeSampleList (void)
 {
   SAMPLOAD *old, *s = musiclist;
 
@@ -543,7 +543,7 @@ FreeSampleList ()
 /* Returns the total amount of memory required by the musiclist queue. */
 #ifdef MAX_SAMPLESPACE
 static ULONG 
-SampleTotal ()
+SampleTotal (void)
 {
   int total = 0;
   SAMPLOAD *samplist = musiclist;
@@ -636,14 +636,14 @@ SL_LoadSamples (void)
 	  s->sample->flags = (s->sample->flags & ~SF_FORMATMASK) | s->outfmt;
 	  if (s->sample->data == NULL)
 	    {
-	      FreeSampleList (musiclist);
+	      FreeSampleList ();
 	      return 1;
 	    }
 	}
       s = s->next;
     }
 
-  FreeSampleList (musiclist);
+  FreeSampleList ();
   return 0;
 }
 

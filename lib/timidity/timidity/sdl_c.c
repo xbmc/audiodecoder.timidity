@@ -70,6 +70,11 @@ static int ctl_read(int32 *valp)
   return RC_NONE;
 }
 
+static int ctl_write(char *buf, int32 size)
+{
+  return RC_NONE;
+}
+
 static int cmsg(int type, int verbosity_level, char *fmt, ...)
 {
   va_list ap;
@@ -109,13 +114,14 @@ const EXPORT char* Timidity_ErrorMsg()
 
 ControlMode ctl=
 {
-    "dumb interface", 'd',
+    "dumb interface", 'd', "dumb",
     1,0,0,
     0,
     ctl_open,
     ctl_close,
     dumb_pass_playing_list,
     ctl_read,
+    ctl_write,
     cmsg,
     ctl_event
 };

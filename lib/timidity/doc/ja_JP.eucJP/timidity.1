@@ -348,7 +348,11 @@ change メッセージを受け取っても変更されません。
 ンです。
 .RE
 .TP
-.BI reverb= (d|n|g|f|G)[,level] ", \-\-reverb=" (d|n|g|f|G)[,level]
+.BI reverb= (d|n|g)[,level] ", \-\-reverb=" (d|n|g)[,level]
+.TP
+.BI reverb= (f|G)[,level,scaleroom,offsetroom,predelay]
+.TP
+.BI "\-\-reverb=" (f|G)[,level,scaleroom,offsetroom,predelay]
 .RS
 .TP
 .B d, 0
@@ -368,6 +372,19 @@ Freeverb MIDI リバーブ制御を有効にします(デフォルト)。
 .LP
 \fIlevel\fP はリバーブレベル \fB0\fP から \fB127\fP を指定するオプショ
 ンです。
+.br
+Freeverbを有効にした場合には，追加のオプションとして \fIscaleroom\fP，
+\fIoffsetroom\fP および \fIpredelay\fP を指定できます。
+\fIscaleroom\fP と \fIoffsetroom\fP は以下のリバーブのルームサイズの
+計算に対する変数です
+.br
+roomsize = C * \fIscaleroom\fP + \fIoffsetroom\fP
+.br
+ここで C はリバーブのキャラクタを表します。
+\fIpredelay\fP はリバーブのプリディレイに対する倍率を百分率で指定しま
+す。
+いずれのパラメータも省略可能です。
+デフォルトはそれぞれ \fB0.28\fP，\fB0.7\fP，\fB100\fP です。
 .RE
 .TP
 .BI vlpf= (d|c|m) ", \-\-voice\-lpf=" (d|c|m)
@@ -450,6 +467,39 @@ C スプライン補完アルゴリズムを有効にします。
 ファーストディケイを指定します。このオプションを指定にすると，エンベロ
 ープの変化時間が半分になり高速に動作します。ただし，音の立ち上がりとリ
 リース時間が短くなってしまいます。
+.TP
+.BI "\-G " begin1-end1[,begin2-end2,...](m)
+.br
+.ns
+.TP
+.BI \-\-segment= begin1-end1[,begin2-end2,...](m)
+カンマで区切った時間セグメントを指定して，複数の区間を演奏します。
+.br
+それぞれの時間セグメントは，\fIbegin\fP-\fIend\fP のように，ダッシュで
+区切った時間で表します。デフォルトでは，\fB0-infinity\fP です。
+\fIbegin\fP から \fIend\fP までを演奏します。
+.sp
+時間フォーマット: \fI[<分>:]<秒>[.<ミリ秒>]\fP
+.sp
+オプションに `m' の文字を付加することにより，秒の代わりに小節および拍と
+して扱います。
+.sp
+Time format: \fI<小節>[.<拍>]\fP (小節，拍は 1 から始まる)
+.sp
+例:
+.RS
+.TP
+.B \-G12-1:00.500
+12 秒スキップして演奏を開始し，1 分 00 秒 500 で演奏を終了します。
+.TP
+.B \-G-5,2:00-
+最初の 5 秒間を演奏したのち，開始から 2 分スキップして最後まで演奏しま
+す。
+.TP
+.B \-G11.4-20m -G4:00-
+第 11 小節 第 4 拍から第 20 小節を演奏したのち，開始から 4 分スキップし
+て最後まで演奏します。
+.RE
 .TP
 .BI "\-g " sec ", \-\-spectrogram=" sec
 サウンドスペクトログラムを表示する Window を開きます。このオプションは
@@ -696,7 +746,7 @@ VBR で出力，レート \fIn\fP の ABR で出力，VAD(voice activity detection)
 .RS
 .TP
 .B \-Od
-オーディオデバイスに出力します(デフォルト)。
+OSS dsp デバイスに出力します(デフォルト)。
 .TP
 .B \-Os
 ALSA オーディオデバイスに出力します。
@@ -745,7 +795,7 @@ PortAudio
 .B \-Oj
 JACK
 .TP
-.B \-Or
+.B \-OR
 aRts
 .TP
 .B \-OA
@@ -761,7 +811,7 @@ Ogg FLAC
 Ogg Speex
 .TP
 .B \-OO
-libdao
+libao
 .TP
 .B フォーマットオプション
 上記オプションに続けて，以下の文字を追加することで出力フォーマットを指
@@ -1094,7 +1144,7 @@ USA
 .SH 入手元
 \fBTiMidity++\fP は 改良版 TiMidity のページ
 .LP
-URL http://www.timidity.jp/
+URL https://sourceforge.net/projects/timidity/
 .LP
 で手に入ります。
 .SH バグ

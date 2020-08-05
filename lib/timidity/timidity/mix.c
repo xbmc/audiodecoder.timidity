@@ -167,7 +167,11 @@ void mix_voice(int32 *buf, int v, int32 c)
 }
 
 /* return 1 if filter is enabled. */
+#ifdef __BORLANDC__
+static int do_voice_filter(int v, resample_t *sp, mix_t *lp, int32 count)
+#else
 static inline int do_voice_filter(int v, resample_t *sp, mix_t *lp, int32 count)
+#endif
 {
 	FilterCoefficients *fc = &(voice[v].fc);
 	int32 i, f, q, p, b0, b1, b2, b3, b4, t1, t2, x;
@@ -204,7 +208,8 @@ static inline int do_voice_filter(int v, resample_t *sp, mix_t *lp, int32 count)
 	}
 }
 
-#define MOOG_RESONANCE_MAX 0.897638f
+//#define MOOG_RESONANCE_MAX 0.897638f
+#define MOOG_RESONANCE_MAX 0.88f
 
 static inline void recalc_voice_resonance(int v)
 {
@@ -250,7 +255,11 @@ static inline void recalc_voice_fc(int v)
 }
 
 /* Ramp a note out in c samples */
+#ifdef __BORLANDC__
+static void ramp_out(mix_t *sp, int32 *lp, int v, int32 c)
+#else
 static inline void ramp_out(mix_t *sp, int32 *lp, int v, int32 c)
+#endif
 {
 	/* should be final_volume_t, but uint8 gives trouble. */
 	int32 left, right, li, ri, i;
@@ -366,8 +375,13 @@ static inline void ramp_out(mix_t *sp, int32 *lp, int v, int32 c)
 		}
 }
 
+#ifdef __BORLANDC__
+static void mix_mono_signal(
+		mix_t *sp, int32 *lp, int v, int count)
+#else
 static inline void mix_mono_signal(
 		mix_t *sp, int32 *lp, int v, int count)
+#endif
 {
 	Voice *vp = voice + v;
 	final_volume_t left = vp->left_mix;
@@ -460,7 +474,11 @@ static inline void mix_mono_signal(
 		}
 }
 
+#ifdef __BORLANDC__
+static void mix_mono(mix_t *sp, int32 *lp, int v, int count)
+#else
 static inline void mix_mono(mix_t *sp, int32 *lp, int v, int count)
+#endif
 {
 	final_volume_t left = voice[v].left_mix;
 	mix_t s;
@@ -503,8 +521,13 @@ static inline void mix_mono(mix_t *sp, int32 *lp, int v, int count)
 }
 
 #ifdef ENABLE_PAN_DELAY
+#ifdef __BORLANDC__
+static void mix_mystery_signal(
+		mix_t *sp, int32 *lp, int v, int count)
+#else
 static inline void mix_mystery_signal(
 		mix_t *sp, int32 *lp, int v, int count)
+#endif
 {
 	Voice *vp = voice + v;
 	final_volume_t left = vp->left_mix, right = vp->right_mix;
@@ -931,7 +954,11 @@ static inline void mix_mystery_signal(
 #endif	/* ENABLE_PAN_DELAY */
 
 #ifdef ENABLE_PAN_DELAY
+#ifdef __BORLANDC__
+static void mix_mystery(mix_t *sp, int32 *lp, int v, int count)
+#else
 static inline void mix_mystery(mix_t *sp, int32 *lp, int v, int count)
+#endif
 {
 	final_volume_t left = voice[v].left_mix, right = voice[v].right_mix;
 	mix_t s;
@@ -1134,8 +1161,13 @@ static inline void mix_mystery(mix_t *sp, int32 *lp, int v, int count)
 #endif	/* ENABLE_PAN_DELAY */
 
 
+#ifdef __BORLANDC__
+static void mix_center_signal(
+		mix_t *sp, int32 *lp, int v, int count)
+#else
 static inline void mix_center_signal(
 		mix_t *sp, int32 *lp, int v, int count)
+#endif
 {
 	Voice *vp = voice + v;
 	final_volume_t left=vp->left_mix;
@@ -1232,7 +1264,11 @@ static inline void mix_center_signal(
 		}
 }
 
+#ifdef __BORLANDC__
+static void mix_center(mix_t *sp, int32 *lp, int v, int count)
+#else
 static inline void mix_center(mix_t *sp, int32 *lp, int v, int count)
+#endif
 {
 	final_volume_t left = voice[v].left_mix;
 	mix_t s;
@@ -1275,8 +1311,13 @@ static inline void mix_center(mix_t *sp, int32 *lp, int v, int count)
 	}
 }
 
+#ifdef __BORLANDC__
+static void mix_single_signal(
+		mix_t *sp, int32 *lp, int v, int count)
+#else
 static inline void mix_single_signal(
 		mix_t *sp, int32 *lp, int v, int count)
+#endif
 {
 	Voice *vp = voice + v;
 	final_volume_t left = vp->left_mix;
@@ -1373,7 +1414,11 @@ static inline void mix_single_signal(
 		}
 }
 
+#ifdef __BORLANDC__
+static void mix_single(mix_t *sp, int32 *lp, int v, int count)
+#else
 static inline void mix_single(mix_t *sp, int32 *lp, int v, int count)
+#endif
 {
 	final_volume_t left = voice[v].left_mix;
 	mix_t s;
@@ -1417,7 +1462,11 @@ static inline void mix_single(mix_t *sp, int32 *lp, int v, int count)
 }
 
 /* Returns 1 if the note died */
+#ifdef __BORLANDC__
+static int update_signal(int v)
+#else
 static inline int update_signal(int v)
+#endif
 {
 	Voice *vp = &voice[v];
 
@@ -1430,7 +1479,11 @@ static inline int update_signal(int v)
 	return apply_envelope_to_amp(v);
 }
 
+#ifdef __BORLANDC__
+static int update_envelope(int v)
+#else
 static inline int update_envelope(int v)
+#endif
 {
 	Voice *vp = &voice[v];
 	
@@ -1568,11 +1621,15 @@ static inline void voice_ran_out(int v)
 		ctl_note_event(v);
 }
 
+#ifdef __BORLANDC__
+static int next_stage(int v)
+#else
 static inline int next_stage(int v)
+#endif
 {
 	int stage, ch, eg_stage;
 	int32 offset, val;
-	FLOAT_T rate;
+	FLOAT_T rate, temp_rate;
 	Voice *vp = &voice[v];
 
 	stage = vp->envelope_stage++;
@@ -1584,6 +1641,20 @@ static inline int next_stage(int v)
 	ch = vp->channel;
 	/* there is some difference between GUS patch and Soundfont at envelope. */
 	eg_stage = get_eg_stage(v, stage);
+
+	/* HACK -- force ramps to occur over 20 msec windows to avoid pops */
+	/* Do not apply to attack envelope */
+	if (eg_stage > EG_ATTACK)
+	{
+		temp_rate = control_ratio * (labs(vp->envelope_volume - offset) /
+					(play_mode->rate * 0.02));
+		if (temp_rate < 1)
+			temp_rate = 1;
+		if (rate < 0)
+			temp_rate = -temp_rate;
+		if (fabs(temp_rate) < fabs(rate))
+			rate = temp_rate;
+	}
 
 	/* envelope generator (see also playmidi.[ch]) */
 	if (ISDRUMCHANNEL(ch))
@@ -1652,13 +1723,32 @@ static inline int next_stage(int v)
 		} else if (rate < 1) {rate =  1;}	/* slowest attack */
 	}
 
+	/* HACK -- force ramps to occur over 20 msec windows to avoid pops */
+	/* Do not apply to attack envelope */
+	/* Must check again in case the above conditions shortened it */
+	if (eg_stage > EG_ATTACK)
+	{
+		temp_rate = control_ratio * (labs(vp->envelope_volume - offset) /
+					(play_mode->rate * 0.02));
+		if (temp_rate < 1)
+			temp_rate = 1;
+		if (rate < 0)
+			temp_rate = -temp_rate;
+		if (fabs(temp_rate) < fabs(rate))
+			rate = temp_rate;
+	}
+
 	vp->envelope_increment = (int32)rate;
 	vp->envelope_target = offset;
 
 	return 0;
 }
 
+#ifdef __BORLANDC__
+static void update_tremolo(int v)
+#else
 static inline void update_tremolo(int v)
+#endif
 {
 	Voice *vp = &voice[v];
 	int32 depth = vp->tremolo_depth << 7;
@@ -1778,12 +1868,16 @@ int apply_envelope_to_amp(int v)
 }
 
 #ifdef SMOOTH_MIXING
+#ifdef __BORLANDC__
 static inline void compute_mix_smoothing(Voice *vp)
+#else
+static inline void compute_mix_smoothing(Voice *vp)
+#endif
 {
 	int32 max_win, delta;
-	
-	/* reduce popping -- ramp the amp over a <= 0.5 msec window */
-	max_win = play_mode->rate * 0.0005;
+
+	/* reduce popping -- ramp the amp over a 20 msec window */
+	max_win = (play_mode->rate * 0.02) / control_ratio;
 	delta = FROM_FINAL_VOLUME(vp->left_mix) - vp->old_left_mix;
 	if (labs(delta) > max_win) {
 		vp->left_mix_inc = delta / max_win;
@@ -1807,7 +1901,11 @@ static inline void compute_mix_smoothing(Voice *vp)
 }
 #endif
 
+#ifdef __BORLANDC__
+static int update_modulation_envelope(int v)
+#else
 static inline int update_modulation_envelope(int v)
+#endif
 {
 	Voice *vp = &voice[v];
 

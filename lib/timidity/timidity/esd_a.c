@@ -27,6 +27,7 @@
 #include "config.h"
 #endif /* HAVE_CONFIG_H */
 #define _GNU_SOURCE
+#include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -67,7 +68,7 @@ PlayMode dpm = {
     -1,
     {0}, /* default: get all the buffer fragments you can */
     "Enlightened sound daemon", 'e',
-    "/dev/dsp",
+    "esd",
     open_output,
     close_output,
     output_data,
@@ -78,7 +79,6 @@ PlayMode dpm = {
 
 static int try_open(void)
 {
-    int fd, tmp, i;
     int include_enc, exclude_enc;
     esd_format_t esdformat;
 
@@ -93,7 +93,7 @@ static int try_open(void)
     /* Open the audio device */
     esdformat = (dpm.encoding & PE_16BIT) ? ESD_BITS16 : ESD_BITS8;
     esdformat |= (dpm.encoding & PE_MONO) ? ESD_MONO : ESD_STEREO;
-    return esd_play_stream_fallback(esdformat,dpm.rate,NULL,"timidity");
+    return esd_play_stream(esdformat,dpm.rate,NULL,"timidity");
 }
 
 
@@ -101,8 +101,7 @@ static int detect(void)
 {
     int fd;
 
-    /* FIXME: do we need to set this? */
-    /* setenv("ESD_NO_SPAWN", "1", 0); */
+    setenv("ESD_NO_SPAWN", "1", 0);
     fd = try_open();
     if (fd < 0)
 	return 0;
@@ -180,6 +179,10 @@ static int acntl(int request, void *arg)
 	  /* not implemented yet */
           break;
 	}
+
+      case PM_REQ_PLAY_START: /* Called just before playing */
+      case PM_REQ_PLAY_END: /* Called just after playing */
+        return 0;
     }
     return -1;
 }

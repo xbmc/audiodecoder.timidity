@@ -1,7 +1,6 @@
-
 /*
     TiMidity++ -- MIDI to WAVE converter and player
-    Copyright (C) 1999-2002 Masanao Izumo <mo@goice.co.jp>
+    Copyright (C) 1999-2004 Masanao Izumo <iz@onicos.co.jp>
     Copyright (C) 1995 Tuukka Toivonen <tt@cgs.fi>
 
     This program is free software; you can redistribute it and/or modify
@@ -13,11 +12,10 @@
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
-    
+
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
-
+    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
     portmidisyn_c.c - PortMIDI synthesizer interface
         Copyright (c) 2003 Keishi Suenaga <s_keishi@mutt.freemail.ne.jp>
@@ -26,7 +24,6 @@
         alsaseq_c.c - ALSA sequencer server interface
             Copyright (c) 2000  Takashi Iwai <tiwai@suse.de>
         readmidi.c
-
 
     DESCRIPTION
     ===========
@@ -43,23 +40,21 @@
     TiMidity loads instruments dynamically at each time a PRM_CHANGE
     event is received.  It sometimes causes a noise.
     If you are using a low power machine, invoke timidity as follows:
-      % timidity -s 11025 -iP        (set sampling freq. to 11025Hz)
+      % timidity -s 11025 -iP       (set sampling freq. to 11025Hz)
     or
       % timidity -EFreverb=0 -iP    (disable MIDI reverb effect control)
 
     TiMidity keeps all loaded instruments during executing.
 
     To use TiMidity as output device, you need a MIDI loopback device.
-	(for windows)
-      I use MIDI Yoke. It can freely be obtained MIDI-OX site
+    (for windows)
+      I use MIDI Yoke.  It can freely be obtained MIDI-OX site
       (http://www.midiox.com).
-	(for ALSA)
-      You can easily meke it. See MIDI router section 
+    (for ALSA)
+      You can easily meke it.  See MIDI router section
       of Alsa 0.9.0 howto
-	  (http://www.suse.de/~mana/alsa090_howto.html#sect05 ).
-
+      (http://www.suse.de/~mana/alsa090_howto.html#sect05 ).
 */
-
 
 //#define  USE_PORTMIDI 1
 //#define USE_GTK_GUI 1
@@ -96,7 +91,7 @@ static void ctl_close(void);
 static int ctl_read(int32 *valp);
 static int cmsg(int type, int verbosity_level, char *fmt, ...);
 static void ctl_event(CtlEvent *e);
-static void ctl_pass_playing_list(int n, char *args[]);
+static int ctl_pass_playing_list(int n, char *args[]);
 
 #ifndef __W32__
 static void init_keybord(void);
@@ -113,12 +108,14 @@ static char readch(void);
 ControlMode ctl=
 {
     "PortMIDI Synthesizer interface", 'P',
+    "portmidisyn",
     1,0,0,
     0,
     ctl_open,
     ctl_close,
     ctl_pass_playing_list,
     ctl_read,
+    NULL,
     cmsg,
     ctl_event
 };
@@ -215,17 +212,17 @@ static void doit(void);
 
 #ifdef IA_W32G_SYN
 extern void w32g_syn_doit(void);
-extern void w32g_syn_ctl_pass_playing_list(int n_, char *args_[]);
+extern int w32g_syn_ctl_pass_playing_list(int n_, char *args_[]);
 
 
-static void ctl_pass_playing_list(int n, char *args[])
+static int ctl_pass_playing_list(int n, char *args[])
 {
-	w32g_syn_ctl_pass_playing_list ( n, args );
+	return w32g_syn_ctl_pass_playing_list ( n, args );
 }
 #endif
 
 #ifndef IA_W32G_SYN
-static void ctl_pass_playing_list(int n, char *args[])
+static int ctl_pass_playing_list(int n, char *args[])
 #else
 // 0: OK, 2: Require to reset.
 int ctl_pass_playing_list2(int n, char *args[])
@@ -241,7 +238,7 @@ rtsyn_get_port_list();
 #ifndef IA_W32G_SYN
 	if(n > MAX_PORT ){
 		printf( "Usage: timidity -iW [Midi interface No s]\n");
-		return;
+		return 1;
 	}
 #endif
 
@@ -347,11 +344,7 @@ rtsyn_get_port_list();
 #endif /* USE_GTK_GUI */
 	rtsyn_close();
 
-#ifdef IA_W32G_SYN
 	return 0;
-#else
-	return;
-#endif
 }
 
 

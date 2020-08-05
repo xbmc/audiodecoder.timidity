@@ -246,3 +246,46 @@ void wrd_midi_event(int cmd, int arg)
 void wrd_sherry_event(int addr)
 {
 }
+
+void free_wrd(void)
+{
+#if 0
+	delete_string_table(&path_list);
+#endif
+}
+
+#ifdef __BORLANDC__
+void print_ecmd(char *cmd, int *args, int narg)
+{
+    char *p;
+    size_t s = MIN_MBLOCK_SIZE;
+
+    p = (char *)new_segment(&tmpbuffer, s);
+    snprintf(p, s, "^%s(", cmd);
+
+    if(*args == WRD_NOARG)
+	strncat(p, "*", s - strlen(p) - 1);
+    else {
+	char c[CHAR_BIT*sizeof(int)];
+	snprintf(c, sizeof(c)-1, "%d", args[0]);
+	strncat(p, c, s - strlen(p) - 1);
+    }
+    args++;
+    narg--;
+    while(narg > 0)
+    {
+	if(*args == WRD_NOARG)
+	    strncat(p, ",*", s - strlen(p) - 1);
+	else {
+	    char c[CHAR_BIT*sizeof(int)]; /* should be enough loong */
+	    snprintf(c, sizeof(c)-1, ",%d", args[0]);
+	    strncat(p, c, s - strlen(p) - 1);
+	}
+	args++;
+	narg--;
+    }
+    strncat(p, ")", s - strlen(p) - 1);
+    ctl->cmsg(CMSG_INFO, VERB_VERBOSE, "%s", p);
+    reuse_mblock(&tmpbuffer);
+}
+#endif

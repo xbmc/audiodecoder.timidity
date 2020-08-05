@@ -28,6 +28,10 @@
 #endif /* HAVE_CONFIG_H */
 #include <stdio.h>
 
+#ifdef __POCC__
+#include <sys/types.h>
+#endif //for off_t
+
 #ifdef __W32__
 #include <stdlib.h>
 #include <io.h>
@@ -69,7 +73,7 @@ static int acntl(int request, void *arg);
 #define dpm raw_play_mode
 
 PlayMode dpm = {
-    DEFAULT_RATE, PE_16BIT|PE_SIGNED, PF_PCM_STREAM,
+    DEFAULT_RATE, PE_16BIT|PE_SIGNED, PF_PCM_STREAM|PF_FILE_OUTPUT,
     -1,
     {0,0,0,0,0},
     "Raw waveform data", 'r',
@@ -174,8 +178,9 @@ static int open_output(void)
   dpm.encoding = validate_encoding(dpm.encoding, 0, 0);
 
   if(dpm.name == NULL) {
+    if (!current_file_info || !current_file_info->filename)
+      return -1;
     dpm.flag |= PF_AUTO_SPLIT_FILE;
-    dpm.name = NULL;
   } else {
     dpm.flag &= ~PF_AUTO_SPLIT_FILE;
     if((dpm.fd = raw_output_open(dpm.name)) == -1)
@@ -192,7 +197,7 @@ static int output_data(char *buf, int32 bytes)
     if(dpm.fd == -1)
       return -1;
 
-    while(((n = write(dpm.fd, buf, bytes)) == -1) && errno == EINTR)
+    while(((n = std_write(dpm.fd, buf, bytes)) == -1) && errno == EINTR)
 	;
     if(n == -1)
     {
@@ -216,13 +221,11 @@ static int acntl(int request, void *arg)
   case PM_REQ_PLAY_START:
     if(dpm.flag & PF_AUTO_SPLIT_FILE)
       return auto_raw_output_open(current_file_info->filename);
-    break;
+    return 0;
   case PM_REQ_PLAY_END:
-    if(dpm.flag & PF_AUTO_SPLIT_FILE) {
+    if(dpm.flag & PF_AUTO_SPLIT_FILE)
       close_output();
-      return 0;
-    }
-    break;
+    return 0;
   case PM_REQ_DISCARD:
     return 0;
   }

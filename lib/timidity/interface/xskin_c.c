@@ -1,6 +1,6 @@
 /*
     TiMidity++ -- MIDI to WAVE converter and player
-    Copyright (C) 1999-2002 Masanao Izumo <mo@goice.co.jp>
+    Copyright (C) 1999-2004 Masanao Izumo <iz@onicos.co.jp>
     Copyright (C) 1995 Tuukka Toivonen <tt@cgs.fi>
 
     This program is free software; you can redistribute it and/or modify
@@ -15,7 +15,7 @@
 
     You should have received a copy of the GNU General Public License
     along with this program; if not, write to the Free Software
-    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 
     xskin interface by Daisuke nagano <breeze_geo@geocities.co.jp>
 */
@@ -55,9 +55,8 @@ static int ctl_open(int using_stdin, int using_stdout);
 static void ctl_close(void);
 static int ctl_read(int32 *valp);
 static int cmsg(int type, int verbosity_level, char *fmt, ...);
-static void ctl_pass_playing_list(int number_of_files, char *list_of_files[]);
+static int ctl_pass_playing_list(int number_of_files, char *list_of_files[]);
 static void ctl_event(CtlEvent *e);
-static void ctl_speana_data(double *val, int size);
 static void initialize_exp_hz_table( void );
 
 static void xskin_pipe_open(void);
@@ -84,15 +83,20 @@ static int xskin_ready = 0;
 ControlMode ctl=
 {
     "skin interface", 'i',
+    "skin",
     1,0,0,
     0,
     ctl_open,
     ctl_close,
     ctl_pass_playing_list,
     ctl_read,
+    NULL,
     cmsg,
     ctl_event
 };
+
+static uint32 cuepoint = 0;
+static int cuepoint_pending = 0;
 
 static char local_buf[300];
 static int pipe_in_fd,pipe_out_fd=-1;
@@ -326,6 +330,11 @@ static int ctl_blocking_read(int32 *valp  /* Now, valp is not used */ ) {
 }
 
 static int ctl_read(int32 *valp) {
+	if (cuepoint_pending) {
+		*valp = cuepoint;
+		cuepoint_pending = 0;
+		return RC_FORWARD;
+	}
   if (xskin_pipe_ready()<=0) return RC_NONE;
   return ctl_blocking_read(valp);
 }
@@ -342,7 +351,7 @@ static void shuffle(int n,int *a) {
   }
 }
 
-static void ctl_pass_playing_list(int number_of_files, char *list_of_files[]) {
+static int ctl_pass_playing_list(int number_of_files, char *list_of_files[]) {
 
   int current_no,command,i;
   int32 val;
@@ -352,7 +361,8 @@ static void ctl_pass_playing_list(int number_of_files, char *list_of_files[]) {
 
   /* Wait prepare 'interface' */
   xskin_pipe_read(local_buf,sizeof(local_buf));
-  if (strcmp("READY",local_buf)) return;
+  if (strcmp("READY",local_buf))
+    return 0;
   xskin_ready = 1;
 
   /* receive shared memory buffer */
@@ -403,7 +413,7 @@ static void ctl_pass_playing_list(int number_of_files, char *list_of_files[]) {
       command=play_midi_file(list_of_files[file_table[current_no]]);
     } else {
       /* Quit timidity*/
-      if (exitflag) return;
+      if (exitflag) return 0;
       /* Stop playing */
       if (command==RC_QUIT) {
 	sprintf(local_buf,"T 00:00");
@@ -461,6 +471,7 @@ static void ctl_pass_playing_list(int number_of_files, char *list_of_files[]) {
       command=ctl_blocking_read(&val);
     }
   }
+  return 0;
 }
 
 /* ------ Pipe handlers ----- */
@@ -487,8 +498,8 @@ static void xskin_pipe_open(void) {
 }
 
 void xskin_pipe_write(char *buf) {
-  write(pipe_out_fd,buf,strlen(buf));
-  write(pipe_out_fd,"\n",1);
+  ssize_t dummy = write(pipe_out_fd,buf,strlen(buf));
+  dummy += write(pipe_out_fd,"\n",1);
 }
 
 static int xskin_pipe_ready(void) {
@@ -512,7 +523,7 @@ int xskin_pipe_read(char *buf,int bufsize) {
 
   bufsize--;
   for (i=0;i<bufsize;i++) {
-    read(pipe_in_fd,buf+i,1);
+    ssize_t dummy = read(pipe_in_fd,buf+i,1); ++dummy;
     if (buf[i]=='\n') break;
   }
   buf[i]=0;
@@ -521,7 +532,7 @@ int xskin_pipe_read(char *buf,int bufsize) {
 
 int xskin_pipe_read_direct(int32 *buf, int bufsize) {
 
-  read( pipe_in_fd, buf, bufsize );
+  ssize_t dummy = read( pipe_in_fd, buf, bufsize ); ++dummy;
 
   return 0;
 }
@@ -533,6 +544,10 @@ static void ctl_event(CtlEvent *e)
     case CTLE_PLAY_START:
       ctl_total_time((int)e->v1);
       break;
+	case CTLE_CUEPOINT:
+		cuepoint = e->v1;
+		cuepoint_pending = 1;
+		break;
     case CTLE_CURRENT_TIME:
       ctl_current_time((int)e->v1, (int)e->v2);
       break;
