@@ -16,6 +16,18 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
+msgctxt "Addon Summary"
+msgid "MIDI Software synthesizer"
+msgstr "MIDI Software synthesizer"
+
+msgctxt "Addon Description"
+msgid "TiMidity is a software synthesizer that can play MIDI files without a hardware synthesizer.
+
+To use TiMidity you need a working timidity.cfg config file or sound fonts. Copy this files into the directory you intend to store and select it in the Add-on Settings."
+msgstr "TiMidity ist ein Software-Synthesizer, der MIDI-Dateien ohne Hardware-Synthesizer abspielen kann.
+
+Um TiMidity verwenden zu können, benötigen Sie eine funktionierende Konfigurationsdatei timidity.cfg oder Sound-Schriftarten. Kopieren Sie diese Dateien in das Verzeichnis, das Sie speichern möchten, und wählen Sie sie in den Add-On-Einstellungen aus."
+
 # [Consistency] Make terms, settings names, brands and other minutiae, consistent throughout file.
 # [Capitalization] Avoid capitalizing every second word. See http://grammarist.com/capitalization/
 # For example, prefer wording as "This new string" instead of "This New String".

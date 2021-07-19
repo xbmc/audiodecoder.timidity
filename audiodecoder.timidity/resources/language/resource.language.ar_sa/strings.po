@@ -17,6 +17,16 @@ msgstr ""
 "Plural-Forms: nplurals=6; plural=n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 "
 "&& n%100<=10 ? 3 : n%100>=11 ? 4 : 5;\n"
 
+msgctxt "Addon Summary"
+msgid "MIDI Software synthesizer"
+msgstr ""
+
+msgctxt "Addon Description"
+msgid "TiMidity is a software synthesizer that can play MIDI files without a hardware synthesizer.
+
+To use TiMidity you need a working timidity.cfg config file or sound fonts. Copy this files into the directory you intend to store and select it in the Add-on Settings."
+msgstr ""
+
 #[Consistency] Make terms, settings names, brands and other minutiae, consistent throughout file.
 #[Capitalization] Avoid capitalizing every second word. See http://grammarist.com/capitalization/
 #For example, prefer wording as "This new string" instead of "This New String".
