@@ -5,9 +5,9 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: KODI Addons\n"
-"Report-Msgid-Bugs-To: https://github.com/xbmc/audiodecoder.timidity/issues/\n"
+"Report-Msgid-Bugs-To: translations@kodi.tv\n"
 "POT-Creation-Date: YEAR-MO-DA HO:MI+ZONE\n"
-"PO-Revision-Date: 2021-07-03 14:29+0000\n"
+"PO-Revision-Date: 2021-08-03 12:29+0000\n"
 "Last-Translator: Alfonso Cachero <alfonso.cachero@gmail.com>\n"
 "Language-Team: Spanish (Spain) <https://kodi.weblate.cloud/projects/kodi-add-ons-audio-decodersencoders/audiodecoder-timidity/es_es/>\n"
 "Language: es_es\n"
@@ -15,15 +15,15 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=n != 1;\n"
-"X-Generator: Weblate 4.7.1\n"
+"X-Generator: Weblate 4.7.2\n"
 
 msgctxt "Addon Summary"
 msgid "MIDI Software synthesizer"
-msgstr ""
+msgstr "Sintetizador MIDI por software"
 
 msgctxt "Addon Description"
 msgid "TiMidity is a software synthesizer that can play MIDI files without a hardware synthesizer.[CR][CR]To use TiMidity you need a working timidity.cfg config file or sound fonts. Copy this files into the directory you intend to store and select it in the Add-on Settings."
-msgstr ""
+msgstr "TiMidity es un sintetizador por software que puede reproducir archivos MIDI sin un sintetizador hardware.[CR][CR]Para usar TiMidity se ecesita un archivo valido de configuración timidity.cfg o Sound Fonts. Copie esos ficheros en la carpeta donde desee alojarlos e indíquela en los ajustes del addon."
 
 # [Consistency] Make terms, settings names, brands and other minutiae, consistent throughout file.
 # [Capitalization] Avoid capitalizing every second word. See http://grammarist.com/capitalization/

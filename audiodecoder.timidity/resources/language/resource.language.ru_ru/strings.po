@@ -5,9 +5,9 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: KODI Addons\n"
-"Report-Msgid-Bugs-To: https://github.com/xbmc/audiodecoder.timidity/issues/\n"
+"Report-Msgid-Bugs-To: translations@kodi.tv\n"
 "POT-Creation-Date: YEAR-MO-DA HO:MI+ZONE\n"
-"PO-Revision-Date: 2021-07-17 13:29+0000\n"
+"PO-Revision-Date: 2021-08-03 12:29+0000\n"
 "Last-Translator: vdkbsd <valexgus@gmail.com>\n"
 "Language-Team: Russian <https://kodi.weblate.cloud/projects/kodi-add-ons-audio-decodersencoders/audiodecoder-timidity/ru_ru/>\n"
 "Language: ru_ru\n"
@@ -15,15 +15,15 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
-"X-Generator: Weblate 4.7.1\n"
+"X-Generator: Weblate 4.7.2\n"
 
 msgctxt "Addon Summary"
 msgid "MIDI Software synthesizer"
-msgstr ""
+msgstr "Программный синтезатор MIDI"
 
 msgctxt "Addon Description"
 msgid "TiMidity is a software synthesizer that can play MIDI files without a hardware synthesizer.[CR][CR]To use TiMidity you need a working timidity.cfg config file or sound fonts. Copy this files into the directory you intend to store and select it in the Add-on Settings."
-msgstr ""
+msgstr "TiMidity - это программный синтезатор, который может воспроизводить MIDI-файлы без аппаратного синтезатора.[CR][CR]Для использования TiMidity вам необходим рабочий файл конфигурации timidity.cfg или soundfonts. Скопируйте эти файлы в рабочий каталог и выберите его в настройках дополнения."
 
 # [Consistency] Make terms, settings names, brands and other minutiae, consistent throughout file.
 # [Capitalization] Avoid capitalizing every second word. See http://grammarist.com/capitalization/
@@ -34,11 +34,11 @@ msgstr ""
 # For example, "Press \"OK\" for \"All seasons\"" instead of "Press OK for All seasons" after first word.
 msgctxt "#30000"
 msgid "Soundfont or config file"
-msgstr "Звуковой шрифт или файл конфигурации"
+msgstr "Soundfont или файл конфигурации"
 
 msgctxt "#30001"
 msgid "To use TiMidity you need a working timidity.cfg config file or sound fonts."
-msgstr "Для использования TiMidity вам необходим рабочий файл конфигурации timidity.cfg или звуковые шрифты."
+msgstr "Для использования TiMidity вам необходим рабочий файл конфигурации timidity.cfg или soundfonts."
 
 msgctxt "#30002"
 msgid "Scan MIDI for title"
@@ -54,4 +54,4 @@ msgstr "Декодирование звука TiMidity"
 
 msgctxt "#30011"
 msgid "Soundfont not set in settings!"
-msgstr "Звуковой шрифт не установлен в настройках!"
+msgstr "Soundfont не установлен в настройках!"
