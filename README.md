@@ -4,8 +4,8 @@ This is a [Kodi](https://kodi.tv) audio decoder addon for midi files.
 
 [![License: GPL v2](https://img.shields.io/badge/License-GPL%20v2-blue.svg)](LICENSE.md)
 [![Build and run tests](https://github.com/xbmc/audiodecoder.timidity/actions/workflows/build.yml/badge.svg?branch=Nexus)](https://github.com/xbmc/audiodecoder.timidity/actions/workflows/build.yml)
-[![Build Status](https://dev.azure.com/teamkodi/binary-addons/_apis/build/status/xbmc.audiodecoder.timidity?branchName=Matrix)](https://dev.azure.com/teamkodi/binary-addons/_build/latest?definitionId=2&branchName=Matrix)
-[![Build Status](https://jenkins.kodi.tv/view/Addons/job/xbmc/job/audiodecoder.timidity/job/Matrix/badge/icon)](https://jenkins.kodi.tv/blue/organizations/jenkins/xbmc%2Faudiodecoder.timidity/branches/)
+[![Build Status](https://dev.azure.com/teamkodi/binary-addons/_apis/build/status/xbmc.audiodecoder.timidity?branchName=Nexus)](https://dev.azure.com/teamkodi/binary-addons/_build/latest?definitionId=2&branchName=Nexus)
+[![Build Status](https://jenkins.kodi.tv/view/Addons/job/xbmc/job/audiodecoder.timidity/job/Nexus/badge/icon)](https://jenkins.kodi.tv/blue/organizations/jenkins/xbmc%2Faudiodecoder.timidity/branches/)
 
 ## Requirements
 
