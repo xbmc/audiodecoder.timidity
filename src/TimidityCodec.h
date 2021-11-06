@@ -30,8 +30,8 @@ extern "C"
 #define MIDI_TIMESIGNATURE 0xFF58
 #define MIDI_END_OF_TRACK 0xFF2F
 
-class ATTRIBUTE_HIDDEN CTimidityCodec : public kodi::addon::CInstanceAudioDecoder,
-                                        private kodi::tools::CDllHelper
+class ATTR_DLL_LOCAL CTimidityCodec : public kodi::addon::CInstanceAudioDecoder,
+                                      private kodi::tools::CDllHelper
 {
 public:
   CTimidityCodec(KODI_HANDLE instance, const std::string& version);
@@ -46,7 +46,7 @@ public:
             int& bitrate,
             AudioEngineDataFormat& format,
             std::vector<AudioEngineChannel>& channellist) override;
-  int ReadPCM(uint8_t* buffer, int size, int& actualsize) override;
+  int ReadPCM(uint8_t* buffer, size_t size, size_t& actualsize) override;
   int64_t Seek(int64_t time) override;
   bool ReadTag(const std::string& filename, kodi::addon::AudioDecoderInfoTag& tag) override;
 
