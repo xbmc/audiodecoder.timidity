@@ -9,8 +9,16 @@
     point="kodi.audiodecoder"
     name="mid"
     tags="true"
-    extension=".mid|.kar"
-    library_@PLATFORM@="@LIBRARY_FILENAME@"/>
+    library_@PLATFORM@="@LIBRARY_FILENAME@">
+    <support>
+      <extension name=".mid">
+        <description>30100</description>
+      </extension>
+      <extension name=".kar">
+        <description>30101</description>
+      </extension>
+    </support>
+  </extension>
   <extension point="xbmc.addon.metadata">
     <platform>@PLATFORM@</platform>
     <license>GPL-2.0-or-later</license>

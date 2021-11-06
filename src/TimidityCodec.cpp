@@ -121,21 +121,21 @@ bool CTimidityCodec::Init(const std::string& filename,
   return true;
 }
 
-int CTimidityCodec::ReadPCM(uint8_t* buffer, int size, int& actualsize)
+int CTimidityCodec::ReadPCM(uint8_t* buffer, size_t size, size_t& actualsize)
 {
   if (!buffer)
-    return -1;
+    return AUDIODECODER_READ_ERROR;
 
   if (m_pos > Timidity_GetLength(m_song) / 1000 * 48000 * 4)
-    return -1;
+    return AUDIODECODER_READ_EOF;
 
   actualsize = Timidity_FillBuffer(m_song, buffer, size);
   if (actualsize == 0)
-    return -1;
+    return AUDIODECODER_READ_EOF;
 
   m_pos += actualsize;
 
-  return 0;
+  return AUDIODECODER_READ_SUCCESS;
 }
 
 int64_t CTimidityCodec::Seek(int64_t time)
@@ -161,7 +161,7 @@ bool CTimidityCodec::ReadTag(const std::string& filename, kodi::addon::AudioDeco
 
 //------------------------------------------------------------------------------
 
-class ATTRIBUTE_HIDDEN CMyAddon : public kodi::addon::CAddonBase
+class ATTR_DLL_LOCAL CMyAddon : public kodi::addon::CAddonBase
 {
 public:
   CMyAddon() = default;
