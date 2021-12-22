@@ -34,7 +34,7 @@ class ATTR_DLL_LOCAL CTimidityCodec : public kodi::addon::CInstanceAudioDecoder,
                                       private kodi::tools::CDllHelper
 {
 public:
-  CTimidityCodec(KODI_HANDLE instance, const std::string& version);
+  CTimidityCodec(const kodi::addon::IInstanceInfo& instance);
   ~CTimidityCodec();
 
   bool Init(const std::string& filename,

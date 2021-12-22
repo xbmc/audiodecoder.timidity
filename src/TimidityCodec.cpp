@@ -20,10 +20,10 @@
 
 unsigned int CTimidityCodec::m_usedLib = 0;
 
-CTimidityCodec::CTimidityCodec(KODI_HANDLE instance, const std::string& version)
-  : CInstanceAudioDecoder(instance, version)
+CTimidityCodec::CTimidityCodec(const kodi::addon::IInstanceInfo& instance)
+  : CInstanceAudioDecoder(instance)
 {
-  m_soundfont = kodi::GetSettingString("soundfont");
+  m_soundfont = kodi::addon::GetSettingString("soundfont");
 }
 
 CTimidityCodec::~CTimidityCodec()
@@ -46,14 +46,14 @@ bool CTimidityCodec::Init(const std::string& filename,
 {
   if (m_soundfont.empty())
   {
-    kodi::QueueNotification(QUEUE_ERROR, kodi::GetLocalizedString(30010),
-                            kodi::GetLocalizedString(30011));
+    kodi::QueueNotification(QUEUE_ERROR, kodi::addon::GetLocalizedString(30010),
+                            kodi::addon::GetLocalizedString(30011));
     return false;
   }
 
   m_usedLib = !m_usedLib;
-  std::string source = kodi::GetAddonPath(LIBRARY_PREFIX + std::string("timidity_") +
-                                          std::to_string(m_usedLib) + LIBRARY_SUFFIX);
+  std::string source = kodi::addon::GetAddonPath(LIBRARY_PREFIX + std::string("timidity_") +
+                                                 std::to_string(m_usedLib) + LIBRARY_SUFFIX);
 
   // clang-format off
   if (!LoadDll(source)) return false;
@@ -78,7 +78,7 @@ bool CTimidityCodec::Init(const std::string& filename,
 
   std::stringstream ss;
   ss << "timiditiy-" << static_cast<void*>(this) << ".mid";
-  m_tmpFileName = kodi::GetTempAddonPath(ss.str());
+  m_tmpFileName = kodi::addon::GetTempPath(ss.str());
   if (!kodi::vfs::CopyFile(filename, m_tmpFileName))
     return false;
 
@@ -145,7 +145,7 @@ int64_t CTimidityCodec::Seek(int64_t time)
 
 bool CTimidityCodec::ReadTag(const std::string& filename, kodi::addon::AudioDecoderInfoTag& tag)
 {
-  if (!kodi::GetSettingBoolean("scantext"))
+  if (!kodi::addon::GetSettingBoolean("scantext"))
     return false;
 
   CMidiScan scan(filename);
@@ -165,13 +165,10 @@ class ATTR_DLL_LOCAL CMyAddon : public kodi::addon::CAddonBase
 {
 public:
   CMyAddon() = default;
-  ADDON_STATUS CreateInstance(int instanceType,
-                              const std::string& instanceID,
-                              KODI_HANDLE instance,
-                              const std::string& version,
-                              KODI_HANDLE& addonInstance) override
+  ADDON_STATUS CreateInstance(const kodi::addon::IInstanceInfo& instance,
+                              KODI_ADDON_INSTANCE_HDL& hdl) override
   {
-    addonInstance = new CTimidityCodec(instance, version);
+    hdl = new CTimidityCodec(instance);
     return ADDON_STATUS_OK;
   }
 };
