@@ -98,9 +98,9 @@ bool CMidiScan::Scan()
         else if (a.text[ptr] == 'T')
         {
           std::string data = a.text.c_str() + 2;
-          if (std::all_of(data.begin(), data.end(), [](unsigned char c) {
-                return c == ' ' || c == '"' || c == '-' || c == '\'' || isupper(c);
-              }))
+          if (std::all_of(data.begin(), data.end(),
+                          [](unsigned char c)
+                          { return c == ' ' || c == '"' || c == '-' || c == '\'' || isupper(c); }))
             std::transform(data.begin() + 1, data.end(), data.begin() + 1,
                            [](unsigned char c) { return tolower(c); });
 
@@ -625,7 +625,8 @@ void CMidiScan::BiggerMsg()
 
 std::string CMidiScan::RandomString(size_t length)
 {
-  auto randchar = []() -> char {
+  auto randchar = []() -> char
+  {
     const char charset[] = "0123456789"
                            "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
                            "abcdefghijklmnopqrstuvwxyz";
