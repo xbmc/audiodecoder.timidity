@@ -18,6 +18,7 @@
     <assets>
       <icon>icon.png</icon>
     </assets>
+    <summary lang="ca_ES">Sintetitzador de programari MIDI</summary>
     <summary lang="da_DK">MIDI Software-synthesizer</summary>
     <summary lang="de_DE">MIDI Software Synthesizer</summary>
     <summary lang="en_GB">MIDI Software synthesizer</summary>
@@ -29,6 +30,7 @@
     <summary lang="pl_PL">Syntezator programowy MIDI</summary>
     <summary lang="ru_RU">Программный синтезатор MIDI</summary>
     <summary lang="zh_CN">MIDI 软件合成器</summary>
+    <description lang="ca_ES">TiMidity és un sintetitzador per programari que pot reproduir fitxers MIDI sense un sintetitzador de maquinari.[CR][CR]Per utilitzar TiMidity necessites un fitxer de configuració timidity.cfg o fonts de so. Copieu aquests fitxers al directori que voleu emmagatzemar-los i seleccioneu-los a la configuració del complement.</description>
     <description lang="da_DK">TiMidity er en software-synthesizer, der kan afspille MIDI-filer uden en hardware-synthesizer.[CR][CR]For at bruge TiMidity skal du have en fungerende timidity.cfg-konfigurationsfil eller lydskrifttyper. Kopier disse filer til de mapper, hvor du vil gemme, og vælg dem i add-on-indstillingerne.</description>
     <description lang="de_DE">TiMidity ist ein Software-Synthesizer, der MIDI-Dateien ohne Hardware-Synthesizer abspielen kann.[CR][CR]Um TiMidity verwenden zu können, benötigen Sie eine funktionierende Konfigurationsdatei timidity.cfg oder Sound-Schriftarten. Kopieren Sie diese Dateien in das Verzeichnis, das Sie speichern möchten, und wählen Sie sie in den Addon-Einstellungen aus.</description>
     <description lang="en_GB">TiMidity is a software synthesizer that can play MIDI files without a hardware synthesizer.[CR][CR]To use TiMidity you need a working timidity.cfg config file or sound fonts. Copy this files into the directory you intend to store and select it in the Add-on Settings.</description>
