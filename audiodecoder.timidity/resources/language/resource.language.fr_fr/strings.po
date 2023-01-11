@@ -7,7 +7,7 @@ msgstr ""
 "Project-Id-Version: KODI Addons\n"
 "Report-Msgid-Bugs-To: translations@kodi.tv\n"
 "POT-Creation-Date: YEAR-MO-DA HO:MI+ZONE\n"
-"PO-Revision-Date: 2022-12-22 15:20+0000\n"
+"PO-Revision-Date: 2023-01-01 15:15+0000\n"
 "Last-Translator: skypichat <skypichat@hotmail.fr>\n"
 "Language-Team: French (France) <https://kodi.weblate.cloud/projects/kodi-add-ons-audio-decodersencoders/audiodecoder-timidity/fr_fr/>\n"
 "Language: fr_fr\n"
@@ -34,7 +34,7 @@ msgstr "TiMidity est un synthétiseur logiciel capable de lire des fichiers MIDI
 # For example, "Press \"OK\" for \"All seasons\"" instead of "Press OK for All seasons" after first word.
 msgctxt "#30000"
 msgid "Soundfont or config file"
-msgstr "Soundfont ou fichier de configuration"
+msgstr "Police sonore ou fichier de configuration"
 
 msgctxt "#30001"
 msgid "To use TiMidity you need a working timidity.cfg config file or sound fonts."
@@ -54,4 +54,4 @@ msgstr "Décodage audio de Timidity"
 
 msgctxt "#30011"
 msgid "Soundfont not set in settings!"
-msgstr "Soundfont non défini dans les paramètres !"
+msgstr "Police sonore non défini dans les paramètres !"
